@@ -193,6 +193,66 @@ Backend Cyno đã cho phép CORS giới hạn cho `http://localhost:8080` và `h
 - `Enter` gửi; `Shift+Enter` xuống dòng.
 - API URL trống sẽ hiện `Backend connection failed` với hướng dẫn cấu hình và không crash UI.
 
+## Turn debug history
+
+Mỗi request được lưu thành một turn riêng gồm request payload, raw response, parsed reply, HTTP status, client timing, backend duration, intent, state/step, extracted fields, model, pipeline, Telegram dry-run và lỗi. Bấm vào bubble user/bot hoặc lỗi để chọn turn và xem lại debug tương ứng; turn mới nhất tự được chọn.
+
+Các action dưới user message:
+
+- `Retry`: gửi lại đúng input gốc và giữ turn cũ.
+- `Edit & Resend`: sửa input rồi tạo turn mới.
+- `Copy request`: copy request payload của turn.
+
+## Website / Messenger mode
+
+Chọn `Website` để giữ request contract hiện tại (`channel: "chat-test"`, option gửi bằng `value`). Chọn `Messenger` để adapter gửi thêm payload quick reply, mặc định qua `quickReplyPayload` với giá trị `id`; text hiển thị của option vẫn được gửi trong trường `message`.
+
+Contract Messenger được cấu hình per bot:
+
+```js
+channels: {
+  website: { requestChannel: "chat-test" },
+  messenger: {
+    requestChannel: "messenger",
+    quickReplyPayloadField: "quickReplyPayload",
+    quickReplyPayloadValueField: "id"
+  }
+}
+```
+
+Backend nào dùng tên trường khác có thể đổi `quickReplyPayloadField` và `quickReplyPayloadValueField`; tester không giả định chi tiết triển khai Messenger production.
+
+## Test Scenarios / Regression Runner
+
+Thêm scenario vào `window.CHATBOT_SCENARIOS` trong `config.js`, hoặc thêm mảng `scenarios` vào từng bot:
+
+```js
+{
+  id: "erp-complete-lead",
+  botId: "cyno",
+  name: "ERP complete lead",
+  channelMode: "website",
+  messages: ["Tôi cần ERP", "Sản xuất", "50 nhân sự", "200 triệu", "0901234567"],
+  assertions: {
+    intent: "PROVIDE_CONTACT",
+    step: "leadConsent",
+    fields: { companySize: 50 },
+    telegramStatus: "would_send",
+    telegramTriggerCount: 1
+  }
+}
+```
+
+Scenario runner luôn tạo session mới, gửi message tuần tự, hiển thị tiến độ và báo `PASS`/`FAIL` kèm assertion lỗi. Tester chỉ kiểm tra dữ liệu debug được backend trả về, không chứa qualification logic.
+
+## Export QA report
+
+Chọn `JSON` hoặc `TXT` rồi bấm `Export QA` để tải toàn bộ conversation, session, per-turn request/response, debug, pipeline, Telegram dry-run, lỗi và timing. Report có thể gửi trực tiếp khi báo bug.
+
+## Rapid / duplicate edge test
+
+`Edge test mode` tắt mặc định và giữ nguyên hành vi khóa input khi request đang chạy. Khi bật, có thể gửi nhiều request song song. Bật thêm `Reuse messageId khi Duplicate`, sau đó dùng action `Duplicate` dưới user message để gửi lại cùng event/message ID và kiểm tra dedupe backend.
+
 ## Suggested replies / quick replies
 
 Cyno trả option trong response text bằng schema:
@@ -212,5 +272,5 @@ Cyno trả option trong response text bằng schema:
 }
 ```
 
-Tester hiển thị `label` thành chip dưới bubble bot và gửi `value` qua trường `message` khi chip được chọn, để endpoint `/api/chat` giữ nguyên request contract hiện tại. Messenger thật dùng `id` làm `quick_reply.payload`, nhưng website endpoint hiện không nhận `quickReplyPayload`. API generic có thể đặt `optionValueField: "id"` trong config nếu cần gửi `id`; response cũng có thể dùng `quickReplies`, `quick_replies`, `suggestedReplies` hoặc `options`. Option dạng chuỗi sẽ vừa hiển thị vừa gửi chính chuỗi đó. Khi người dùng gửi turn mới, các chip cũ được xóa.
+Tester hiển thị `label` thành chip dưới bubble bot. Ở Website mode, tester gửi `value` qua trường `message` để endpoint `/api/chat` giữ nguyên request contract hiện tại. Ở Messenger mode, tester gửi thêm trường payload được cấu hình trong `channels.messenger`; mặc định là `quickReplyPayload: option.id` và `message: option.label`. Response có thể dùng `quickReplies`, `quick_replies`, `suggestedReplies` hoặc `options` với adapter generic; Cyno adapter đọc `suggestedOptions`. Option dạng chuỗi sẽ vừa hiển thị vừa gửi chính chuỗi đó. Khi người dùng gửi turn mới, các chip cũ được xóa.
 

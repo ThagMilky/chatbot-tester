@@ -51,6 +51,33 @@
               <p id="test-mode-hint" class="field-hint"></p>
             </div>
 
+            <div class="field-group">
+              <label for="channel-mode">Channel / test mode</label>
+              <select id="channel-mode">
+                <option value="website">Website</option>
+                <option value="messenger">Messenger</option>
+              </select>
+              <p class="field-hint">Website giữ contract hiện tại; Messenger gửi thêm quick-reply payload theo adapter.</p>
+            </div>
+
+            <div class="edge-test-card">
+              <div class="toggle-row">
+                <div>
+                  <span class="display-label">Edge test mode</span>
+                  <strong>Rapid / duplicate requests</strong>
+                </div>
+                <label class="switch-label" for="edge-test-mode">
+                  <input id="edge-test-mode" type="checkbox" />
+                  <span id="edge-test-label">OFF</span>
+                </label>
+              </div>
+              <p id="edge-test-hint" class="field-hint">Tắt mặc định: khi gửi, input sẽ khóa để tránh request chồng nhau.</p>
+              <label class="check-row" for="duplicate-event-mode">
+                <input id="duplicate-event-mode" type="checkbox" disabled />
+                <span>Reuse messageId khi Duplicate</span>
+              </label>
+            </div>
+
             <div class="field-group session-field">
               <label for="session-id">Session ID</label>
               <div class="session-row">
@@ -66,6 +93,41 @@
               </button>
               <button id="clear-chat" class="secondary-button" type="button">Clear Chat</button>
             </div>
+
+            <section class="tool-section" aria-labelledby="scenario-title">
+              <div class="tool-heading">
+                <div>
+                  <p class="section-kicker">Regression</p>
+                  <h3 id="scenario-title">Test Scenarios</h3>
+                </div>
+                <span id="scenario-progress" class="tool-status">Chưa chạy</span>
+              </div>
+              <label for="scenario-select">Scenario</label>
+              <select id="scenario-select">
+                <option>Chưa có scenario trong config.js</option>
+              </select>
+              <div class="tool-actions">
+                <button id="run-scenario" class="primary-button" type="button">Run Scenario</button>
+              </div>
+              <div id="scenario-result" class="scenario-result empty-debug-value">Chưa chạy scenario</div>
+            </section>
+
+            <section class="tool-section" aria-labelledby="export-title">
+              <div class="tool-heading">
+                <div>
+                  <p class="section-kicker">Shareable output</p>
+                  <h3 id="export-title">Export QA</h3>
+                </div>
+              </div>
+              <div class="export-row">
+                <select id="export-format" aria-label="QA report format">
+                  <option value="json">JSON</option>
+                  <option value="txt">TXT</option>
+                </select>
+                <button id="export-qa" class="secondary-button" type="button">Export QA</button>
+              </div>
+              <p class="field-hint">Xuất toàn bộ conversation, request/response, debug và timing của các turn.</p>
+            </section>
           </section>
 
           <section class="chat-panel panel" aria-labelledby="chat-title">
