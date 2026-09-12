@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Local QA tool để giả lập client chat và kiểm tra backend debug."
+    />
+    <title>Chatbot Tester</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">LOCAL QA TOOL</p>
+          <h1>Chatbot Tester</h1>
+          <p class="subtitle">Chat UI và backend debug cho nhiều chatbot.</p>
+        </div>
+        <span class="local-badge">localhost</span>
+      </header>
+
+      <main class="workspace">
+        <div class="chat-column">
+          <section class="control-panel panel" aria-labelledby="setup-title">
+            <div class="panel-heading">
+              <div>
+                <p class="section-kicker">Thiết lập</p>
+                <h2 id="setup-title">Bot &amp; session</h2>
+              </div>
+            </div>
+
+            <div class="field-group">
+              <label for="bot-select">Chatbot</label>
+              <select id="bot-select" aria-describedby="bot-status"></select>
+              <p id="bot-status" class="field-hint"></p>
+            </div>
+
+            <div class="api-display">
+              <span class="display-label">API URL</span>
+              <code id="api-url">Chưa chọn bot</code>
+            </div>
+
+            <div id="test-mode-card" class="test-mode-card">
+              <div>
+                <span class="display-label">Test mode</span>
+                <strong id="test-mode-label">Chưa cấu hình</strong>
+              </div>
+              <span id="test-mode-badge" class="mode-badge">OFF</span>
+              <p id="test-mode-hint" class="field-hint"></p>
+            </div>
+
+            <div class="field-group session-field">
+              <label for="session-id">Session ID</label>
+              <div class="session-row">
+                <input id="session-id" type="text" readonly />
+                <button id="copy-session" class="secondary-button" type="button">Copy</button>
+              </div>
+              <p class="field-hint">Các tin nhắn liên tiếp dùng cùng session này.</p>
+            </div>
+
+            <div class="control-actions">
+              <button id="new-conversation" class="primary-button" type="button">
+                New Conversation
+              </button>
+              <button id="clear-chat" class="secondary-button" type="button">Clear Chat</button>
+            </div>
+          </section>
+
+          <section class="chat-panel panel" aria-labelledby="chat-title">
+            <div class="chat-header">
+              <div class="bot-avatar" aria-hidden="true">✦</div>
+              <div>
+                <p class="section-kicker">Conversation</p>
+                <h2 id="chat-title">Chatbot</h2>
+              </div>
+              <span id="connection-state" class="connection-state">Sẵn sàng</span>
+            </div>
+
+            <div id="chat-messages" class="chat-messages" aria-live="polite" aria-label="Tin nhắn">
+              <div id="empty-state" class="empty-state">
+                <div class="empty-icon" aria-hidden="true">☵</div>
+                <h3>Bắt đầu cuộc trò chuyện</h3>
+                <p>Nhập một tin nhắn bên dưới để kiểm tra chatbot đã chọn.</p>
+              </div>
+            </div>
+
+            <form id="chat-form" class="composer">
+              <label class="sr-only" for="message-input">Nội dung tin nhắn</label>
+              <textarea
+                id="message-input"
+                rows="2"
+                placeholder="Nhập tin nhắn..."
+                autocomplete="off"
+              ></textarea>
+              <div class="composer-footer">
+                <span class="keyboard-hint">Enter để gửi · Shift+Enter xuống dòng</span>
+                <button id="send-button" class="send-button" type="submit">
+                  <span id="send-label">Send</span>
+                  <span id="send-spinner" class="spinner" aria-hidden="true"></span>
+                </button>
+              </div>
+            </form>
+          </section>
+        </div>
+
+        <aside class="debug-panel panel" aria-labelledby="debug-title">
+          <details id="debug-details" open>
+            <summary id="debug-title">Backend Debug</summary>
+            <p id="debug-message-label" class="debug-subtitle">Chưa có message nào được gửi.</p>
+
+            <div class="debug-metrics">
+              <div class="metric-card">
+                <span>HTTP status</span>
+                <strong id="debug-status">—</strong>
+              </div>
+              <div class="metric-card">
+                <span>Client response time</span>
+                <strong id="debug-time">—</strong>
+              </div>
+              <div class="metric-card">
+                <span>Backend duration</span>
+                <strong id="debug-duration">—</strong>
+              </div>
+            </div>
+
+            <div class="debug-summary-grid">
+              <div class="summary-item">
+                <span>Intent</span>
+                <strong id="debug-intent">—</strong>
+              </div>
+              <div class="summary-item">
+                <span>Current state / step</span>
+                <strong id="debug-step">—</strong>
+              </div>
+              <div class="summary-item">
+                <span>LLM / model</span>
+                <strong id="debug-model">—</strong>
+              </div>
+            </div>
+
+            <div class="debug-block">
+              <div class="debug-label-row">
+                <span>Request payload</span>
+              </div>
+              <pre id="request-json">Chưa có request</pre>
+            </div>
+
+            <div class="debug-block">
+              <div class="debug-label-row">
+                <span>Extracted fields</span>
+              </div>
+              <pre id="debug-fields">Chưa có extracted fields</pre>
+            </div>
+
+            <div class="debug-block">
+              <div class="debug-label-row">
+                <span>Pipeline events / steps</span>
+              </div>
+              <div id="pipeline-list" class="pipeline-list empty-debug-value">Chưa có pipeline data</div>
+            </div>
+
+            <section id="telegram-debug" class="telegram-debug" hidden aria-labelledby="telegram-title">
+              <div class="telegram-heading">
+                <div>
+                  <p class="section-kicker">Telegram Mock</p>
+                  <h3 id="telegram-title">Notification dry-run</h3>
+                </div>
+                <span id="telegram-status" class="mode-badge">—</span>
+              </div>
+              <div class="telegram-meta">
+                <div>
+                  <span>Trigger</span>
+                  <strong id="telegram-trigger">—</strong>
+                </div>
+                <div>
+                  <span>Status</span>
+                  <strong id="telegram-outcome">—</strong>
+                </div>
+              </div>
+              <div id="telegram-events" class="telegram-events"></div>
+              <div class="debug-block">
+                <div class="debug-label-row">
+                  <span>Payload</span>
+                </div>
+                <div id="telegram-payload" class="telegram-payload">Chưa có payload</div>
+              </div>
+              <p id="telegram-reason" class="telegram-reason"></p>
+            </section>
+
+            <div class="debug-block">
+              <div class="debug-label-row">
+                <span>Raw backend response</span>
+              </div>
+              <pre id="raw-response">Chưa có response</pre>
+            </div>
+
+            <div class="debug-block">
+              <div class="debug-label-row">
+                <span>Parsed reply</span>
+              </div>
+              <pre id="parsed-reply">Chưa có reply</pre>
+            </div>
+
+            <div class="debug-block error-block" id="debug-error-block" hidden>
+              <div class="debug-label-row">
+                <span>Error</span>
+              </div>
+              <pre id="debug-error">—</pre>
+            </div>
+
+            <div class="debug-block error-block" id="debug-stack-block" hidden>
+              <div class="debug-label-row">
+                <span>Stack trace (local/dev only)</span>
+              </div>
+              <pre id="debug-stack">—</pre>
+            </div>
+          </details>
+        </aside>
+      </main>
+    </div>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+    <script src="config.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>
