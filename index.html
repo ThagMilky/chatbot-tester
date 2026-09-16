@@ -131,6 +131,60 @@
               </div>
             </section>
 
+            <section class="tool-section regression-builder" aria-labelledby="regression-builder-title">
+              <div class="tool-heading">
+                <div>
+                  <p class="section-kicker">Phase 3</p>
+                  <h3 id="regression-builder-title">Regression Builder</h3>
+                </div>
+                <span id="regression-status" class="tool-status" aria-live="polite">No draft</span>
+              </div>
+              <p class="field-hint">Create a reusable client-message scenario from the imported conversation and replay evidence.</p>
+              <div class="tool-actions">
+                <button id="generate-regression" class="primary-button" type="button">Generate from Conversation / Replay</button>
+              </div>
+              <div class="regression-editor" aria-label="Regression scenario editor">
+                <label for="regression-name">Scenario name</label>
+                <input id="regression-name" type="text" placeholder="Regression scenario name" disabled />
+                <label for="regression-id">Scenario ID</label>
+                <input id="regression-id" type="text" placeholder="regression-id" disabled />
+                <label for="regression-intent">Intent assertion (optional)</label>
+                <input id="regression-intent" type="text" placeholder="Known replay intent" disabled />
+                <label for="regression-step">State / step assertion (optional)</label>
+                <input id="regression-step" type="text" placeholder="Known replay state or step" disabled />
+                <label for="regression-fields">Extracted fields assertion (JSON, optional)</label>
+                <textarea id="regression-fields" rows="3" placeholder='{"field":"value"}' disabled></textarea>
+                <div class="regression-inline-fields">
+                  <div>
+                    <label for="regression-telegram-status">Telegram status (optional)</label>
+                    <input id="regression-telegram-status" type="text" placeholder="would_send" disabled />
+                  </div>
+                  <div>
+                    <label for="regression-telegram-trigger-count">Telegram trigger count (optional)</label>
+                    <input id="regression-telegram-trigger-count" type="number" min="0" step="1" placeholder="0" disabled />
+                  </div>
+                </div>
+                <fieldset class="behavior-expectations">
+                  <legend>Behavior expectations <span>(Phase 4; not automatically evaluated)</span></legend>
+                  <label><input type="checkbox" data-behavior-key="answerLatestQuestion" disabled /> Answer the latest question</label>
+                  <label><input type="checkbox" data-behavior-key="preserveContext" disabled /> Preserve context</label>
+                  <label><input type="checkbox" data-behavior-key="noUnnecessaryRepetition" disabled /> No unnecessary repetition or re-asking known information</label>
+                  <label><input type="checkbox" data-behavior-key="noContradictionOrRenegotiation" disabled /> No contradiction or renegotiation</label>
+                  <label><input type="checkbox" data-behavior-key="doNotIgnoreUserQuestion" disabled /> Do not ignore the user question</label>
+                </fieldset>
+              </div>
+              <div class="tool-actions regression-action-row">
+                <button id="save-regression" class="primary-button" type="button" disabled>Save Scenario</button>
+                <button id="export-regression" class="secondary-button" type="button" disabled>Export JSON</button>
+              </div>
+              <label for="regression-import-json">Import generated scenario JSON</label>
+              <textarea id="regression-import-json" rows="4" placeholder="Paste exported scenario JSON here..." spellcheck="false"></textarea>
+              <div class="tool-actions">
+                <button id="import-regression" class="secondary-button" type="button">Import JSON</button>
+              </div>
+              <p class="field-hint">Behavior expectations are stored as metadata for Phase 4 and are not deterministic PASS/FAIL assertions.</p>
+            </section>
+
             <section class="tool-section" aria-labelledby="scenario-title">
               <div class="tool-heading">
                 <div>
@@ -325,6 +379,7 @@
     <script src="config.js"></script>
     <script src="conversation-parser.js"></script>
     <script src="replay-helpers.js"></script>
+    <script src="regression-helpers.js"></script>
     <script src="app.js"></script>
   </body>
 </html>

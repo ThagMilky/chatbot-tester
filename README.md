@@ -12,7 +12,7 @@ The parser is implemented in `conversation-parser.js` with no npm dependencies. 
 node --test test/conversation-parser.test.js
 ```
 
-Phase 1 intentionally does not generate regressions or run AI evaluation. Phase 2 adds sequential replay of imported client messages; regression generation and AI evaluation remain out of scope.
+Phase 1 intentionally does not generate regressions or run AI evaluation. Phase 2 adds sequential replay of imported client messages; Phase 3 adds deterministic regression scenario generation, while AI evaluation remains out of scope.
 
 ## Conversation replay (Phase 2)
 
@@ -24,6 +24,20 @@ Replay state planning helpers live in `replay-helpers.js` and are covered by Nod
 
 ```bash
 node --test test/conversation-parser.test.js test/replay-helpers.test.js
+```
+
+## Regression Builder (Phase 3)
+
+After importing a conversation, use `Generate from Conversation / Replay` to create a draft for the selected bot. The draft contains only ordered imported messages with `role=client`; imported bot messages remain reference context and are never sent as scenario inputs. Edit the scenario ID, name, deterministic assertions, and behavior expectations before saving or exporting.
+
+Deterministic assertions are limited to `intent`, `step`/state, extracted fields, Telegram status, and Telegram trigger count. Values are prefilled only when available from the current replay/debug turns. Behavior expectations (`answerLatestQuestion`, `preserveContext`, `noUnnecessaryRepetition`, `noContradictionOrRenegotiation`, and `doNotIgnoreUserQuestion`) are stored separately as Phase 4 metadata and are not evaluated or counted by the current runner.
+
+Generated scenarios are stored locally in browser storage and are listed with configured scenarios in the existing Scenario Runner. `Import JSON` accepts a single scenario, an array, or an exported collection. `Export JSON` produces a portable collection without raw backend responses or secrets. Invalid data is rejected without replacing saved scenarios; ID collisions receive deterministic suffixes.
+
+Pure validation, snapshot, storage, and serialization helpers live in `regression-helpers.js` and use only Node/browser built-ins. Focused and existing tests can be run with:
+
+```bash
+node --test
 ```
 
 Local QA tool để giả lập client chat, xem backend debug có cấu trúc và kiểm tra Telegram notification dry-run cho nhiều chatbot. Project dùng HTML, CSS, vanilla JavaScript và Node.js built-in modules; không có npm dependency và không chứa business logic chatbot.

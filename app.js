@@ -248,6 +248,19 @@
     retryReplay: document.getElementById("retry-replay"),
     replayStatus: document.getElementById("replay-status"),
     conversationPreview: document.getElementById("conversation-preview"),
+    regressionStatus: document.getElementById("regression-status"),
+    generateRegression: document.getElementById("generate-regression"),
+    saveRegression: document.getElementById("save-regression"),
+    importRegression: document.getElementById("import-regression"),
+    exportRegression: document.getElementById("export-regression"),
+    regressionImportJson: document.getElementById("regression-import-json"),
+    regressionName: document.getElementById("regression-name"),
+    regressionId: document.getElementById("regression-id"),
+    regressionIntent: document.getElementById("regression-intent"),
+    regressionStep: document.getElementById("regression-step"),
+    regressionFields: document.getElementById("regression-fields"),
+    regressionTelegramStatus: document.getElementById("regression-telegram-status"),
+    regressionTelegramTriggerCount: document.getElementById("regression-telegram-trigger-count"),
     chatTitle: document.getElementById("chat-title"),
     connectionState: document.getElementById("connection-state"),
     messages: document.getElementById("chat-messages"),
@@ -307,6 +320,11 @@
       result: null,
     },
     importedMessages: [],
+    regression: {
+      draft: null,
+      editingSavedId: null,
+      savedScenarios: [],
+    },
     replay: {
       status: "idle",
       plan: [],
@@ -1013,6 +1031,7 @@
       }
       elements.conversationPreview.appendChild(item);
     });
+    renderRegressionDraft();
   }
 
   function scanConversation() {
@@ -1027,6 +1046,7 @@
       elements.importStatus.textContent = state.importedMessages.length + " message" +
         (state.importedMessages.length === 1 ? "" : "s") + " in preview";
     }
+    renderRegressionDraft();
     showToast(state.importedMessages.length
       ? "Conversation scanned. Review the parsed preview before using it."
       : "No messages found in the transcript.");
@@ -1566,6 +1586,263 @@
     return turn;
   }
 
+  function getRegressionHelpers() {
+    return window.RegressionHelpers && typeof window.RegressionHelpers.validateScenario === "function"
+      ? window.RegressionHelpers
+      : null;
+  }
+
+  function getRegressionStorage() {
+    try {
+      return window.localStorage;
+    } catch (error) {
+      return null;
+    }
+  }
+
+  function getRegressionBehaviorInputs() {
+    return Array.prototype.slice.call(document.querySelectorAll("[data-behavior-key]"));
+  }
+
+  function setRegressionStatus(message, isError) {
+    if (!elements.regressionStatus) return;
+    elements.regressionStatus.textContent = message;
+    elements.regressionStatus.classList.toggle("regression-status-error", Boolean(isError));
+  }
+
+  function renderRegressionDraft() {
+    const helpers = getRegressionHelpers();
+    const draft = state.regression.draft;
+    const editableControls = [
+      elements.regressionName,
+      elements.regressionId,
+      elements.regressionIntent,
+      elements.regressionStep,
+      elements.regressionFields,
+      elements.regressionTelegramStatus,
+      elements.regressionTelegramTriggerCount,
+    ].filter(Boolean);
+    const locked = !draft || state.isSending || isReplayLocked();
+    editableControls.forEach(function (control) {
+      control.disabled = locked;
+    });
+    getRegressionBehaviorInputs().forEach(function (input) {
+      input.disabled = locked;
+    });
+
+    if (draft && helpers) {
+      elements.regressionName.value = draft.name || "";
+      elements.regressionId.value = draft.id || "";
+      elements.regressionIntent.value = Object.hasOwn(draft.assertions, "intent") ? draft.assertions.intent : "";
+      const stateStepAssertion = helpers.getStateStepAssertion(draft.assertions);
+      elements.regressionStep.value = stateStepAssertion.value === undefined ? "" : stateStepAssertion.value;
+      elements.regressionFields.value = Object.hasOwn(draft.assertions, "fields")
+        ? JSON.stringify(draft.assertions.fields, null, 2)
+        : "";
+      elements.regressionTelegramStatus.value = Object.hasOwn(draft.assertions, "telegramStatus")
+        ? draft.assertions.telegramStatus
+        : "";
+      elements.regressionTelegramTriggerCount.value = Object.hasOwn(draft.assertions, "telegramTriggerCount")
+        ? draft.assertions.telegramTriggerCount
+        : "";
+      getRegressionBehaviorInputs().forEach(function (input) {
+        input.checked = draft.behaviorExpectations && draft.behaviorExpectations[input.dataset.behaviorKey] === true;
+      });
+    }
+
+    if (elements.generateRegression) {
+      elements.generateRegression.disabled = state.isSending || isReplayLocked() || !state.importedMessages.some(function (message) {
+        return message && message.role === "client";
+      });
+    }
+    if (elements.saveRegression) elements.saveRegression.disabled = locked;
+    if (elements.exportRegression) elements.exportRegression.disabled = locked;
+    if (elements.importRegression) elements.importRegression.disabled = state.isSending || isReplayLocked();
+    if (elements.regressionImportJson) elements.regressionImportJson.disabled = state.isSending || isReplayLocked();
+  }
+
+  function readRegressionDraft() {
+    const helpers = getRegressionHelpers();
+    if (!helpers || !state.regression.draft) throw new Error("Regression helpers are not available.");
+
+    const intent = elements.regressionIntent.value.trim();
+    const stateStepValue = elements.regressionStep.value.trim();
+    const telegramStatus = elements.regressionTelegramStatus.value.trim();
+    const fieldsText = elements.regressionFields.value.trim();
+    let fields;
+    if (fieldsText) {
+      try {
+        fields = JSON.parse(fieldsText);
+      } catch (error) {
+        throw new Error("Extracted fields must be valid JSON.");
+      }
+      if (!isObject(fields)) throw new Error("Extracted fields must be a JSON object.");
+    }
+
+    const triggerCountText = elements.regressionTelegramTriggerCount.value.trim();
+    let triggerCount;
+    if (triggerCountText) {
+      triggerCount = Number(triggerCountText);
+      if (!Number.isInteger(triggerCount) || triggerCount < 0) {
+        throw new Error("Telegram trigger count must be a non-negative integer.");
+      }
+    }
+
+    const assertions = helpers.buildEditableAssertions(state.regression.draft.assertions, {
+      intent: intent,
+      stateStepValue: stateStepValue,
+      fields: fields,
+      telegramStatus: telegramStatus,
+      telegramTriggerCount: triggerCount,
+    });
+
+    const behaviorExpectations = {};
+    getRegressionBehaviorInputs().forEach(function (input) {
+      behaviorExpectations[input.dataset.behaviorKey] = input.checked;
+    });
+
+    return helpers.validateScenario(Object.assign({}, state.regression.draft, {
+      name: elements.regressionName.value,
+      id: elements.regressionId.value,
+      assertions: assertions,
+      behaviorExpectations: behaviorExpectations,
+    }));
+  }
+
+  function loadRegressionDraft(scenario, statusMessage) {
+    const helpers = getRegressionHelpers();
+    if (!helpers) return;
+    try {
+      state.regression.draft = helpers.validateScenario(scenario);
+      state.regression.editingSavedId = null;
+      renderRegressionDraft();
+      if (statusMessage) setRegressionStatus(statusMessage);
+    } catch (error) {
+      setRegressionStatus(error.message, true);
+    }
+  }
+
+  function getConfiguredScenarioIds() {
+    const ids = [];
+    const globalScenarios = Array.isArray(window.CHATBOT_SCENARIOS) ? window.CHATBOT_SCENARIOS : [];
+    const botScenarios = state.bots.reduce(function (all, bot) {
+      return all.concat(Array.isArray(bot.scenarios) ? bot.scenarios : []);
+    }, []);
+    globalScenarios.concat(botScenarios).forEach(function (scenario, index) {
+      if (!isObject(scenario)) return;
+      ids.push(String(scenario.id || "scenario-" + index));
+    });
+    return ids;
+  }
+
+  function saveRegressionDraft() {
+    const helpers = getRegressionHelpers();
+    if (!helpers || !state.regression.draft) return;
+    try {
+      const draft = readRegressionDraft();
+      const configuredIds = getConfiguredScenarioIds();
+      const saved = state.regression.savedScenarios.slice();
+      const existingIndex = saved.findIndex(function (scenario) { return scenario.id === draft.id; });
+      const canReplace = existingIndex >= 0 && state.regression.editingSavedId === draft.id && !configuredIds.includes(draft.id);
+      if ((existingIndex >= 0 || configuredIds.includes(draft.id)) && !canReplace) {
+        draft.id = helpers.uniqueScenarioId(draft.id, configuredIds.concat(saved.map(function (scenario) { return scenario.id; })));
+      }
+      draft.updatedAt = new Date().toISOString();
+      const next = canReplace
+        ? saved.map(function (scenario, index) { return index === existingIndex ? draft : scenario; })
+        : saved.concat(draft);
+      if (!helpers.saveSavedScenarios(getRegressionStorage(), next)) {
+        throw new Error("Could not save scenario. Local storage is unavailable.");
+      }
+      state.regression.savedScenarios = next;
+      state.regression.draft = draft;
+      state.regression.editingSavedId = draft.id;
+      state.scenario.scenarioId = draft.id;
+      updateScenarioControls();
+      renderRegressionDraft();
+      setRegressionStatus("Saved " + draft.id + ".");
+      showToast("Scenario saved locally.");
+    } catch (error) {
+      setRegressionStatus(error.message, true);
+      showToast("Scenario was not saved.");
+    }
+  }
+
+  function importRegressionScenarios() {
+    const helpers = getRegressionHelpers();
+    if (!helpers || !elements.regressionImportJson) return;
+    try {
+      const imported = helpers.parseScenarioJson(elements.regressionImportJson.value);
+      const configuredIds = getConfiguredScenarioIds();
+      const saved = state.regression.savedScenarios.slice();
+      const usedIds = configuredIds.concat(saved.map(function (scenario) { return scenario.id; }));
+      const added = imported.map(function (scenario) {
+        const next = helpers.validateScenario(scenario);
+        next.id = helpers.uniqueScenarioId(next.id, usedIds);
+        usedIds.push(next.id);
+        return next;
+      });
+      const next = saved.concat(added);
+      if (!helpers.saveSavedScenarios(getRegressionStorage(), next)) {
+        throw new Error("Could not import scenario. Local storage is unavailable.");
+      }
+      state.regression.savedScenarios = next;
+      loadRegressionDraft(added[0], "Imported " + added.length + " scenario" + (added.length === 1 ? "" : "s") + ".");
+      state.regression.editingSavedId = added[0].id;
+      state.scenario.scenarioId = added[0].id;
+      updateScenarioControls();
+      elements.regressionImportJson.value = "";
+      showToast("Scenario JSON imported locally.");
+    } catch (error) {
+      setRegressionStatus(error.message, true);
+      showToast("Scenario JSON was rejected.");
+    }
+  }
+
+  function exportRegressionScenario() {
+    const helpers = getRegressionHelpers();
+    if (!helpers || !state.regression.draft) return;
+    try {
+      const draft = readRegressionDraft();
+      const content = helpers.serializeScenarios([draft]);
+      const blob = new Blob([content], { type: "application/json;charset=utf-8" });
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = (draft.id || "regression-scenario") + ".json";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(function () { URL.revokeObjectURL(link.href); }, 0);
+      state.regression.draft = draft;
+      renderRegressionDraft();
+      setRegressionStatus("Exported " + draft.id + ".");
+    } catch (error) {
+      setRegressionStatus(error.message, true);
+      showToast("Scenario was not exported.");
+    }
+  }
+
+  function generateRegressionScenario() {
+    const helpers = getRegressionHelpers();
+    if (!helpers || isReplayLocked() || state.isSending) return;
+    try {
+      const scenario = helpers.createRegressionScenario({
+        importedMessages: state.importedMessages,
+        turns: state.turns,
+        botId: state.selectedBot && state.selectedBot.id,
+        channelMode: state.channelMode,
+      });
+      state.regression.draft = scenario;
+      state.regression.editingSavedId = null;
+      renderRegressionDraft();
+      setRegressionStatus("Draft generated with " + scenario.messages.length + " client message" + (scenario.messages.length === 1 ? "" : "s") + ".");
+      showToast("Regression draft generated. Review it before saving.");
+    } catch (error) {
+      setRegressionStatus(error.message, true);
+      showToast("Could not generate regression scenario.");
+    }
+  }
+
   function getConfiguredScenarios() {
     const scenarios = [];
     const globalScenarios = Array.isArray(window.CHATBOT_SCENARIOS) ? window.CHATBOT_SCENARIOS : [];
@@ -1580,6 +1857,11 @@
         ...scenario,
         id: scenario.id || "scenario-" + index,
       });
+    });
+    state.regression.savedScenarios.forEach(function (scenario) {
+      if (!isObject(scenario) || !Array.isArray(scenario.messages)) return;
+      if (scenario.botId && (!state.selectedBot || scenario.botId !== state.selectedBot.id)) return;
+      scenarios.push({ ...scenario });
     });
     return scenarios;
   }
@@ -1623,6 +1905,12 @@
       });
       elements.scenarioResult.appendChild(list);
     }
+    if (report.behaviorExpectations && Object.keys(report.behaviorExpectations).length) {
+      const note = document.createElement("p");
+      note.className = "scenario-behavior-note";
+      note.textContent = "Behavior expectations are stored metadata only; Phase 3 does not automatically evaluate them.";
+      elements.scenarioResult.appendChild(note);
+    }
   }
 
   function updateScenarioControls() {
@@ -1664,6 +1952,7 @@
       }
     }
     renderScenarioResult(state.scenario.result);
+    renderRegressionDraft();
   }
 
   function valuesMatch(actual, expected) {
@@ -1724,6 +2013,9 @@
       passed: checks.every(function (check) { return check.passed; }),
       checks: checks,
       turnCount: turns.length,
+      behaviorExpectations: isObject(scenario.behaviorExpectations)
+        ? { ...scenario.behaviorExpectations }
+        : {},
     };
   }
 
@@ -1937,6 +2229,13 @@
       state.scenario.result = null;
       state.scenario.current = 0;
       state.scenario.total = 0;
+      const selectedScenario = getSelectedScenario();
+      if (selectedScenario && state.regression.savedScenarios.some(function (scenario) {
+        return scenario.id === selectedScenario.id;
+      })) {
+        loadRegressionDraft(selectedScenario, "Loaded saved scenario.");
+        state.regression.editingSavedId = selectedScenario.id;
+      }
       updateScenarioControls();
     });
   }
@@ -1958,6 +2257,18 @@
     elements.retryReplay.addEventListener("click", function () {
       void retryFailedReplayTurn();
     });
+  }
+  if (elements.generateRegression) {
+    elements.generateRegression.addEventListener("click", generateRegressionScenario);
+  }
+  if (elements.saveRegression) {
+    elements.saveRegression.addEventListener("click", saveRegressionDraft);
+  }
+  if (elements.importRegression) {
+    elements.importRegression.addEventListener("click", importRegressionScenarios);
+  }
+  if (elements.exportRegression) {
+    elements.exportRegression.addEventListener("click", exportRegressionScenario);
   }
   if (elements.exportQa) {
     elements.exportQa.addEventListener("click", exportQa);
@@ -1981,6 +2292,12 @@
     elements.scanConversation.addEventListener("click", scanConversation);
   }
 
+  if (getRegressionHelpers()) {
+    state.regression.savedScenarios = getRegressionHelpers().loadSavedScenarios(
+      getRegressionStorage(),
+      getConfiguredScenarioIds(),
+    );
+  }
   updateSessionDisplay();
   populateBotSelect();
   updateChannelDisplay();
@@ -1989,5 +2306,6 @@
   renderConversationPreview();
   updateReplayControls();
   resetDebug();
+  renderRegressionDraft();
 })();
 
