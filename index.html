@@ -97,7 +97,7 @@
             <section class="tool-section import-section" aria-labelledby="conversation-import-title">
               <div class="tool-heading">
                 <div>
-                  <p class="section-kicker">Phase 1</p>
+                  <p class="section-kicker">Phase 2</p>
                   <h3 id="conversation-import-title">Paste Conversation</h3>
                 </div>
                 <span id="import-status" class="tool-status">Not scanned</span>
@@ -116,6 +116,15 @@
               <p class="field-hint">Scan only parses and previews messages. It does not call the chatbot backend.</p>
               <div class="tool-actions">
                 <button id="scan-conversation" class="primary-button" type="button">Scan Conversation</button>
+              </div>
+              <div class="replay-controls" aria-label="Conversation replay controls">
+                <div class="tool-actions replay-action-row">
+                  <button id="run-replay" class="primary-button" type="button">Run Replay</button>
+                  <button id="pause-replay" class="secondary-button" type="button">Pause</button>
+                  <button id="stop-replay" class="secondary-button" type="button">Stop</button>
+                  <button id="retry-replay" class="secondary-button" type="button">Retry Failed Turn</button>
+                </div>
+                <span id="replay-status" class="tool-status" aria-live="polite">Not run</span>
               </div>
               <div id="conversation-preview" class="conversation-preview empty-debug-value">
                 No parsed messages yet.
@@ -315,6 +324,7 @@
 
     <script src="config.js"></script>
     <script src="conversation-parser.js"></script>
+    <script src="replay-helpers.js"></script>
     <script src="app.js"></script>
   </body>
 </html>

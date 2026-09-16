@@ -242,6 +242,11 @@
     importBotNames: document.getElementById("import-bot-names"),
     scanConversation: document.getElementById("scan-conversation"),
     importStatus: document.getElementById("import-status"),
+    runReplay: document.getElementById("run-replay"),
+    pauseReplay: document.getElementById("pause-replay"),
+    stopReplay: document.getElementById("stop-replay"),
+    retryReplay: document.getElementById("retry-replay"),
+    replayStatus: document.getElementById("replay-status"),
     conversationPreview: document.getElementById("conversation-preview"),
     chatTitle: document.getElementById("chat-title"),
     connectionState: document.getElementById("connection-state"),
@@ -302,6 +307,17 @@
       result: null,
     },
     importedMessages: [],
+    replay: {
+      status: "idle",
+      plan: [],
+      nextIndex: 0,
+      failedIndex: null,
+      currentIndex: null,
+      results: [],
+      stopRequested: false,
+      locked: false,
+      runToken: null,
+    },
     toastTimer: null,
   };
 
@@ -338,8 +354,26 @@
     return "edge-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 10);
   }
 
-  function isRequestBlocked() {
-    return state.isSending && !state.edgeTestMode;
+  function isReplayLocked() {
+    return Boolean(state.replay && (
+      state.replay.locked ||
+      ["running", "paused", "failed"].includes(state.replay.status)
+    ));
+  }
+
+  function isRequestBlocked(sendOptions) {
+    const isReplayRequest = Boolean(sendOptions && sendOptions.replay === true);
+    const replayLocked = isReplayLocked();
+    if (window.ReplayHelpers && typeof window.ReplayHelpers.isSendBlocked === "function") {
+      return window.ReplayHelpers.isSendBlocked({
+        replayLocked: replayLocked,
+        isReplayRequest: isReplayRequest,
+        isSending: state.isSending,
+        edgeTestMode: state.edgeTestMode,
+      });
+    }
+
+    return (replayLocked && !isReplayRequest) || (state.isSending && !state.edgeTestMode);
   }
 
   function getBotApiUrl(bot) {
@@ -476,7 +510,7 @@
     }
     if (elements.duplicateEventMode) {
       elements.duplicateEventMode.checked = state.duplicateEventMode;
-      elements.duplicateEventMode.disabled = !state.edgeTestMode || state.isSending;
+      elements.duplicateEventMode.disabled = !state.edgeTestMode || state.isSending || isReplayLocked();
     }
     if (elements.edgeTestHint) {
       elements.edgeTestHint.textContent = state.edgeTestMode
@@ -539,17 +573,15 @@
     elements.connectionState.classList.toggle("loading", mode === "loading");
   }
 
-  function setLoading(isLoading) {
-    state.activeRequestCount = Math.max(0, state.activeRequestCount + (isLoading ? 1 : -1));
-    state.isSending = state.activeRequestCount > 0;
-    const lockInput = state.isSending && !state.edgeTestMode;
+  function updateLoadingControls() {
+    const lockInput = isReplayLocked() || (state.isSending && !state.edgeTestMode);
     elements.sendButton.disabled = lockInput || !getBotApiUrl(state.selectedBot);
     elements.messageInput.disabled = lockInput;
-    elements.botSelect.disabled = state.isSending || !state.bots.length;
-    elements.newConversation.disabled = state.isSending;
-    elements.clearChat.disabled = state.isSending;
-    if (elements.channelMode) elements.channelMode.disabled = state.isSending;
-    if (elements.edgeTestMode) elements.edgeTestMode.disabled = state.isSending;
+    elements.botSelect.disabled = state.isSending || isReplayLocked() || !state.bots.length;
+    elements.newConversation.disabled = state.isSending || isReplayLocked();
+    elements.clearChat.disabled = state.isSending || isReplayLocked();
+    if (elements.channelMode) elements.channelMode.disabled = state.isSending || isReplayLocked();
+    if (elements.edgeTestMode) elements.edgeTestMode.disabled = state.isSending || isReplayLocked();
     elements.sendButton.classList.toggle("loading", state.isSending);
     elements.sendLabel.textContent = state.isSending
       ? state.edgeTestMode && state.activeRequestCount > 1
@@ -566,6 +598,13 @@
     );
     updateChannelDisplay();
     updateScenarioControls();
+    updateReplayControls();
+  }
+
+  function setLoading(isLoading) {
+    state.activeRequestCount = Math.max(0, state.activeRequestCount + (isLoading ? 1 : -1));
+    state.isSending = state.activeRequestCount > 0;
+    updateLoadingControls();
   }
 
   function selectSuggestedOption(option) {
@@ -748,6 +787,7 @@
           button.type = "button";
           button.className = "message-action";
           button.textContent = action[0];
+          button.disabled = action[1] !== "copy" && isReplayLocked();
           button.addEventListener("click", function () {
             if (action[1] === "copy") {
               copyTurnRequest(getTurn(message.turnId));
@@ -762,7 +802,7 @@
           duplicate.type = "button";
           duplicate.className = "message-action edge-action";
           duplicate.textContent = "Duplicate";
-          duplicate.disabled = !state.duplicateEventMode || !getTurn(message.turnId)?.request?.messageId;
+          duplicate.disabled = isReplayLocked() || !state.duplicateEventMode || !getTurn(message.turnId)?.request?.messageId;
           duplicate.addEventListener("click", function () {
             resendUserMessage(message, "duplicate");
           });
@@ -781,7 +821,9 @@
           button.type = "button";
           button.className = "suggested-option";
           button.textContent = option.label;
+          button.disabled = isReplayLocked();
           button.addEventListener("click", function () {
+            if (isReplayLocked()) return;
             button.classList.add("selected");
             button.setAttribute("aria-pressed", "true");
             Array.prototype.forEach.call(options.children, function (candidate) {
@@ -825,6 +867,72 @@
     return configuredNames;
   }
 
+  function getReplayResultForMessage(sourceIndex) {
+    if (!state.replay || !Array.isArray(state.replay.plan)) {
+      return null;
+    }
+
+    const planEntry = getReplayPreviewPlan().find(function (entry) {
+      return entry.sourceIndex === sourceIndex;
+    });
+    return planEntry && state.replay.results[planEntry.replayIndex]
+      ? state.replay.results[planEntry.replayIndex]
+      : null;
+  }
+
+  function getReplayPreviewPlan() {
+    return state.replay.plan.length
+      ? state.replay.plan
+      : window.ReplayHelpers.createReplayPlan(state.importedMessages);
+  }
+
+  function addReplayComparison(item, sourceIndex) {
+    const planEntry = getReplayPreviewPlan().find(function (entry) {
+      return entry.sourceIndex === sourceIndex;
+    });
+    if (!planEntry) {
+      return;
+    }
+
+    const result = getReplayResultForMessage(sourceIndex);
+    const comparison = document.createElement("div");
+    comparison.className = "replay-comparison";
+
+    const heading = document.createElement("strong");
+    heading.textContent = "Replay comparison";
+    comparison.appendChild(heading);
+
+    [["Original Bot", planEntry.originalBotReply, "Not available"], [
+      "Current Bot",
+      result && result.currentBotReply,
+      result && result.status === "failed" ? "Not captured (turn failed)" : "Not replayed",
+    ]].forEach(function (entry) {
+      const row = document.createElement("div");
+      row.className = "replay-comparison-row";
+      const label = document.createElement("span");
+      label.className = "replay-comparison-label";
+      label.textContent = entry[0];
+      const value = document.createElement("span");
+      value.className = "replay-comparison-value";
+      value.textContent = entry[1] === null || entry[1] === undefined || entry[1] === ""
+        ? entry[2]
+        : entry[1];
+      row.append(label, value);
+      comparison.appendChild(row);
+    });
+
+    if (result) {
+      const status = document.createElement("span");
+      status.className = "replay-turn-status " + result.status;
+      status.textContent = result.status === "completed"
+        ? "Completed"
+        : result.status === "failed" ? "Failed" : result.status;
+      comparison.appendChild(status);
+    }
+
+    item.appendChild(comparison);
+  }
+
   function renderConversationPreview() {
     if (!elements.conversationPreview) return;
     elements.conversationPreview.replaceChildren();
@@ -856,9 +964,12 @@
         roleSelect.appendChild(option);
       });
       roleSelect.value = message.role === "bot" ? "bot" : "client";
+      roleSelect.disabled = isReplayLocked();
       roleSelect.addEventListener("change", function (event) {
         state.importedMessages[index].role = event.target.value === "bot" ? "bot" : "client";
+        clearReplayResults();
         renderConversationPreview();
+        updateReplayControls();
       });
 
       const sender = document.createElement("span");
@@ -869,10 +980,13 @@
       deleteButton.type = "button";
       deleteButton.className = "message-action import-delete";
       deleteButton.textContent = "Delete";
+      deleteButton.disabled = isReplayLocked();
       deleteButton.setAttribute("aria-label", "Delete parsed message " + (index + 1));
       deleteButton.addEventListener("click", function () {
         state.importedMessages.splice(index, 1);
+        clearReplayResults();
         renderConversationPreview();
+        updateReplayControls();
         if (elements.importStatus) {
           elements.importStatus.textContent = state.importedMessages.length + " message" +
             (state.importedMessages.length === 1 ? "" : "s") + " in preview";
@@ -885,19 +999,26 @@
       editor.className = "imported-message-editor";
       editor.rows = Math.max(2, Math.min(7, String(message.text).split("\n").length + 1));
       editor.value = message.text;
+      editor.disabled = isReplayLocked();
       editor.setAttribute("aria-label", "Edit parsed " + (message.role === "bot" ? "bot" : "client") + " message " + (index + 1));
       editor.addEventListener("input", function (event) {
         state.importedMessages[index].text = event.target.value;
+        clearReplayResults();
+        renderReplayStatus();
       });
 
       item.append(heading, editor);
+      if (message.role === "client") {
+        addReplayComparison(item, index);
+      }
       elements.conversationPreview.appendChild(item);
     });
   }
 
   function scanConversation() {
-    if (!elements.conversationInput || !window.ConversationParser) return;
+    if (!elements.conversationInput || !window.ConversationParser || isReplayLocked()) return;
     const transcript = elements.conversationInput.value;
+    clearReplayResults();
     state.importedMessages = window.ConversationParser.parseMessengerTranscript(transcript, {
       botNames: getImportBotNames(),
     });
@@ -909,6 +1030,258 @@
     showToast(state.importedMessages.length
       ? "Conversation scanned. Review the parsed preview before using it."
       : "No messages found in the transcript.");
+    updateReplayControls();
+  }
+
+  function renderReplayStatus() {
+    if (!elements.replayStatus) return;
+    const replay = state.replay;
+    const total = replay.plan.length;
+    const completed = Math.min(replay.nextIndex, total);
+    const current = replay.currentIndex === null || replay.currentIndex === undefined
+      ? completed
+      : replay.currentIndex + 1;
+
+    elements.replayStatus.textContent = replay.status === "running"
+      ? "Running " + current + "/" + total
+      : replay.status === "paused"
+        ? "Paused after " + completed + "/" + total
+        : replay.status === "failed"
+          ? "Failed at turn " + (replay.failedIndex + 1) + "/" + total
+          : replay.status === "stopped"
+            ? "Stopped after " + completed + "/" + total
+            : replay.status === "completed"
+              ? "Completed " + total + "/" + total
+              : "Not run";
+  }
+
+  function clearReplayResults() {
+    if (isReplayLocked()) return;
+    state.replay = window.ReplayHelpers.createReplayState([]);
+    state.replay.runToken = null;
+  }
+
+  function updateReplayControls() {
+    const replay = state.replay;
+    const hasPlan = replay.plan.length > 0;
+    const canStart = !state.isSending && !isReplayLocked();
+    const canPause = replay.status === "running" || replay.status === "paused";
+
+    if (elements.runReplay) {
+      const hasImportedClient = state.importedMessages.some(function (message) {
+        return message && message.role === "client";
+      });
+      elements.runReplay.disabled = !canStart || (!hasPlan && !hasImportedClient);
+    }
+    if (elements.pauseReplay) {
+      elements.pauseReplay.disabled = !canPause || (replay.status === "paused" && replay.requestInFlight);
+      elements.pauseReplay.textContent = replay.status === "paused" ? "Resume" : "Pause";
+    }
+    if (elements.stopReplay) elements.stopReplay.disabled = !canPause;
+    if (elements.retryReplay) {
+      elements.retryReplay.disabled = replay.status !== "failed" || replay.failedIndex === null;
+    }
+    if (elements.scanConversation) elements.scanConversation.disabled = state.isSending || isReplayLocked();
+    if (elements.conversationInput) elements.conversationInput.disabled = isReplayLocked();
+    if (elements.importBotNames) elements.importBotNames.disabled = isReplayLocked();
+    renderReplayStatus();
+  }
+
+  function createReplayResult(entry, turn, attempt) {
+    const failed = !turn || Boolean(turn.error);
+    return {
+      replayIndex: entry.replayIndex,
+      sourceIndex: entry.sourceIndex,
+      clientText: entry.clientText,
+      originalBotReply: entry.originalBotReply,
+      currentBotReply: turn && typeof turn.reply === "string" ? turn.reply : null,
+      turnId: turn ? turn.id : null,
+      attempt: attempt || 1,
+      status: failed ? "failed" : "completed",
+      error: turn ? turn.error : "Replay turn was not sent.",
+    };
+  }
+
+  function isCurrentReplayToken(token) {
+    return state.replay.runToken === token;
+  }
+
+  function finishReplay(token, status) {
+    if (!isCurrentReplayToken(token)) return;
+    state.replay.status = status;
+    state.replay.currentIndex = null;
+    state.replay.locked = false;
+    updateLoadingControls();
+    renderMessages(false);
+    renderConversationPreview();
+  }
+
+  async function runReplayLoop(token) {
+    while (isCurrentReplayToken(token)) {
+      const replay = state.replay;
+      if (replay.stopRequested) {
+        finishReplay(token, "stopped");
+        return;
+      }
+      if (replay.status === "paused") {
+        updateReplayControls();
+        return;
+      }
+      if (window.ReplayHelpers.isReplayComplete(replay)) {
+        finishReplay(token, "completed");
+        showToast("Replay completed.");
+        return;
+      }
+
+      const index = window.ReplayHelpers.getNextReplayIndex(replay);
+      if (!window.ReplayHelpers.canStartReplayTurn(replay, index)) {
+        updateReplayControls();
+        return;
+      }
+      const entry = replay.plan[index];
+      replay.currentIndex = index;
+      replay.requestInFlight = true;
+      updateReplayControls();
+      const turn = await sendMessage(entry.clientText, entry.clientText, {
+        replay: true,
+        replaySourceIndex: entry.sourceIndex,
+      });
+      replay.requestInFlight = false;
+
+      if (!isCurrentReplayToken(token)) return;
+      const result = createReplayResult(entry, turn, 1);
+      replay.results[index] = result;
+      renderConversationPreview();
+
+      if (replay.stopRequested) {
+        finishReplay(token, "stopped");
+        return;
+      }
+
+      if (result.status === "failed") {
+        replay.failedIndex = index;
+        replay.status = "failed";
+        replay.currentIndex = null;
+        updateReplayControls();
+        showToast("Replay failed at turn " + (index + 1) + ". Retry the failed turn to continue.");
+        return;
+      }
+
+      replay.nextIndex = index + 1;
+      replay.currentIndex = null;
+      updateReplayControls();
+    }
+  }
+
+  function runReplay() {
+    if (state.isSending || isReplayLocked() || state.scenario.running) return;
+    if (!window.ReplayHelpers) {
+      showToast("Replay helpers are not available.");
+      return;
+    }
+
+    const plan = window.ReplayHelpers.createReplayPlan(state.importedMessages);
+    if (!plan.length) {
+      showToast("No imported client messages are available for replay.");
+      return;
+    }
+
+    const replay = window.ReplayHelpers.createReplayState(plan);
+    replay.status = "running";
+    replay.locked = true;
+    replay.runToken = {};
+    state.replay = replay;
+    resetConversationData();
+    updateReplayControls();
+    renderConversationPreview();
+    showToast("Replay started with a fresh session.");
+    void runReplayLoop(replay.runToken);
+  }
+
+  function pauseOrResumeReplay() {
+    const replay = state.replay;
+    if (replay.status === "running") {
+      replay.status = "paused";
+      updateReplayControls();
+      showToast("Replay paused. No next turn will start.");
+      return;
+    }
+    if (replay.status === "paused" && !replay.requestInFlight) {
+      replay.status = "running";
+      updateReplayControls();
+      void runReplayLoop(replay.runToken);
+    }
+  }
+
+  function stopReplay() {
+    const replay = state.replay;
+    if (replay.status !== "running" && replay.status !== "paused") return;
+    replay.stopRequested = true;
+    replay.status = "stopped";
+    replay.currentIndex = null;
+    if (!replay.requestInFlight) {
+      replay.locked = false;
+    }
+    if (replay.requestInFlight) {
+      updateReplayControls();
+    } else {
+      updateLoadingControls();
+    }
+    if (!replay.requestInFlight) {
+      renderMessages(false);
+      renderConversationPreview();
+    }
+    showToast("Replay stopped. Remaining turns were not sent.");
+  }
+
+  async function retryFailedReplayTurn() {
+    const replay = state.replay;
+    const index = replay.failedIndex;
+    if (replay.status !== "failed" || index === null || !replay.plan[index]) return;
+
+    const entry = replay.plan[index];
+    const previousResult = replay.results[index];
+    const attempt = previousResult ? previousResult.attempt + 1 : 2;
+    replay.stopRequested = false;
+    replay.status = "running";
+    replay.currentIndex = index;
+    replay.requestInFlight = true;
+    updateReplayControls();
+
+    const turn = await sendMessage(entry.clientText, entry.clientText, {
+      replay: true,
+      replaySourceIndex: entry.sourceIndex,
+    });
+    replay.requestInFlight = false;
+
+    if (!isCurrentReplayToken(replay.runToken)) return;
+    const result = createReplayResult(entry, turn, attempt);
+    replay.results[index] = result;
+    renderConversationPreview();
+
+    if (result.status === "failed") {
+      replay.status = "failed";
+      replay.currentIndex = null;
+      updateReplayControls();
+      showToast("Retry failed at turn " + (index + 1) + ".");
+      return;
+    }
+
+    replay.nextIndex = index + 1;
+    replay.failedIndex = null;
+    replay.currentIndex = null;
+    if (replay.stopRequested) {
+      finishReplay(replay.runToken, "stopped");
+      return;
+    }
+    if (window.ReplayHelpers.isReplayComplete(replay)) {
+      finishReplay(replay.runToken, "completed");
+      showToast("Replay completed after retry.");
+      return;
+    }
+    replay.status = "paused";
+    updateReplayControls();
+    showToast("Failed turn retried. Resume to continue replay.");
   }
 
   function setStatusClass(element, status) {
@@ -1085,7 +1458,8 @@
     const messageLabel = displayText === undefined ? message : String(displayText);
     const bot = state.selectedBot;
 
-    if (!message || isRequestBlocked()) {
+    const isReplayRequest = Boolean(sendOptions && sendOptions.replay === true);
+    if (!message || isRequestBlocked(sendOptions)) {
       return null;
     }
 
@@ -1108,6 +1482,10 @@
     };
     const requestPayload = adapter.buildRequest(bot, message, state.sessionId, requestContext);
     const turn = createTurn(bot, message, messageLabel, requestPayload, adapter);
+    turn.runType = isReplayRequest ? "replay" : sendOptions && sendOptions.scenarioId ? "scenario" : "manual";
+    if (isReplayRequest && sendOptions.replaySourceIndex !== undefined) {
+      turn.importedSourceIndex = sendOptions.replaySourceIndex;
+    }
     const startedAt = performance.now();
     const timeoutMs = Number(bot.timeoutMs) > 0 ? Number(bot.timeoutMs) : 30000;
     const controller = typeof AbortController === "function" ? new AbortController() : null;
@@ -1271,8 +1649,8 @@
         ? selectedId
         : scenarios[0].id;
       elements.scenarioSelect.value = state.scenario.scenarioId;
-      elements.scenarioSelect.disabled = state.scenario.running || state.isSending;
-      elements.runScenario.disabled = state.scenario.running || state.isSending;
+      elements.scenarioSelect.disabled = state.scenario.running || state.isSending || isReplayLocked();
+      elements.runScenario.disabled = state.scenario.running || state.isSending || isReplayLocked();
     }
 
     if (elements.scenarioProgress) {
@@ -1361,7 +1739,7 @@
   }
 
   async function runScenario() {
-    if (state.scenario.running || state.isSending) return;
+    if (state.scenario.running || state.isSending || isReplayLocked()) return;
     const scenario = getSelectedScenario();
     if (!scenario) {
       showToast("Chưa có scenario hợp lệ trong config.js.");
@@ -1491,7 +1869,7 @@
   }
 
   function startNewConversation() {
-    if (state.scenario.running) return;
+    if (state.scenario.running || isReplayLocked()) return;
     state.scenario = { running: false, scenarioId: state.scenario.scenarioId, current: 0, total: 0, result: null };
     resetConversationData();
     updateScenarioControls();
@@ -1500,6 +1878,7 @@
   }
 
   function clearChat() {
+    if (isReplayLocked()) return;
     state.messages = [];
     renderMessages();
     showToast("Đã clear chat. Session ID được giữ nguyên.");
@@ -1566,6 +1945,20 @@
       void runScenario();
     });
   }
+  if (elements.runReplay) {
+    elements.runReplay.addEventListener("click", runReplay);
+  }
+  if (elements.pauseReplay) {
+    elements.pauseReplay.addEventListener("click", pauseOrResumeReplay);
+  }
+  if (elements.stopReplay) {
+    elements.stopReplay.addEventListener("click", stopReplay);
+  }
+  if (elements.retryReplay) {
+    elements.retryReplay.addEventListener("click", function () {
+      void retryFailedReplayTurn();
+    });
+  }
   if (elements.exportQa) {
     elements.exportQa.addEventListener("click", exportQa);
   }
@@ -1594,6 +1987,7 @@
   updateScenarioControls();
   renderMessages();
   renderConversationPreview();
+  updateReplayControls();
   resetDebug();
 })();
 

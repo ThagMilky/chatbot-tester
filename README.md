@@ -12,7 +12,19 @@ The parser is implemented in `conversation-parser.js` with no npm dependencies. 
 node --test test/conversation-parser.test.js
 ```
 
-Phase 1 intentionally does not replay imported messages, generate regressions, or run AI evaluation.
+Phase 1 intentionally does not generate regressions or run AI evaluation. Phase 2 adds sequential replay of imported client messages; regression generation and AI evaluation remain out of scope.
+
+## Conversation replay (Phase 2)
+
+After scanning and reviewing an imported conversation, use `Run Replay` to send only the parsed `client` messages to the currently selected bot. Replay creates a new session, waits for each response before sending the next message, and keeps the existing request adapters, response parsing, turn history, and debug panel. Website/Messenger mode and the selected bot adapter are preserved.
+
+The replay preview keeps the imported bot reply mapped to each client turn and shows `Original Bot` beside `Current Bot`. `Pause`/`Resume` controls progress between turns, `Stop` prevents remaining turns from being sent, and a failed request stops the run and enables `Retry Failed Turn`. Retry uses the same client turn and does not overwrite the imported transcript or its original replies. Edge Test Mode does not make normal replay concurrent.
+
+Replay state planning helpers live in `replay-helpers.js` and are covered by Node's built-in test runner:
+
+```bash
+node --test test/conversation-parser.test.js test/replay-helpers.test.js
+```
 
 Local QA tool để giả lập client chat, xem backend debug có cấu trúc và kiểm tra Telegram notification dry-run cho nhiều chatbot. Project dùng HTML, CSS, vanilla JavaScript và Node.js built-in modules; không có npm dependency và không chứa business logic chatbot.
 
