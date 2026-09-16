@@ -1,6 +1,51 @@
 (function () {
   "use strict";
 
+  const THEME_STORAGE_KEY = "chatbot-tester-theme";
+
+  function readThemePreference() {
+    try {
+      return window.localStorage.getItem(THEME_STORAGE_KEY);
+    } catch (error) {
+      return null;
+    }
+  }
+
+  function writeThemePreference(theme) {
+    try {
+      window.localStorage.setItem(THEME_STORAGE_KEY, theme);
+    } catch (error) {
+      // Theme persistence is optional when browser storage is unavailable.
+    }
+  }
+
+  function applyTheme(theme) {
+    const nextTheme = theme === "dark" ? "dark" : "light";
+    document.documentElement.setAttribute("data-theme", nextTheme);
+    if (elements.themeToggle) {
+      const isDark = nextTheme === "dark";
+      elements.themeToggle.setAttribute("aria-pressed", String(isDark));
+      elements.themeToggle.setAttribute(
+        "aria-label",
+        isDark ? "Switch to light theme" : "Switch to dark theme",
+      );
+    }
+    return nextTheme;
+  }
+
+  function toggleTheme() {
+    const nextTheme = applyTheme(document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark");
+    writeThemePreference(nextTheme);
+  }
+
+  function setNavigationOpen(isOpen) {
+    if (!elements.sidebar || !elements.sidebarToggle || !elements.sidebarScrim) return;
+    elements.sidebar.classList.toggle("is-open", isOpen);
+    elements.sidebarScrim.classList.toggle("is-visible", isOpen);
+    elements.sidebarToggle.setAttribute("aria-expanded", String(isOpen));
+    document.body.classList.toggle("nav-open", isOpen);
+  }
+
   // Adapter boundary: change these functions when a bot uses a different contract.
   function getChannelSettings(bot, channelMode) {
     const channels = bot && isObject(bot.channels) ? bot.channels : {};
@@ -217,6 +262,12 @@
   }
 
   const elements = {
+    sidebar: document.getElementById("sidebar"),
+    sidebarToggle: document.getElementById("sidebar-toggle"),
+    sidebarScrim: document.getElementById("sidebar-scrim"),
+    themeToggle: document.getElementById("theme-toggle"),
+    headerBotContext: document.getElementById("header-bot-context"),
+    headerStatusContext: document.getElementById("header-status-context"),
     botSelect: document.getElementById("bot-select"),
     botStatus: document.getElementById("bot-status"),
     apiUrl: document.getElementById("api-url"),
@@ -272,6 +323,10 @@
     sendButton: document.getElementById("send-button"),
     sendLabel: document.getElementById("send-label"),
     debugMessageLabel: document.getElementById("debug-message-label"),
+    turnLogCount: document.getElementById("turn-log-count"),
+    turnLogEmpty: document.getElementById("turn-log-empty"),
+    turnLogTableWrap: document.getElementById("turn-log-table-wrap"),
+    turnLogBody: document.getElementById("turn-log-body"),
     debugStatus: document.getElementById("debug-status"),
     debugTime: document.getElementById("debug-time"),
     debugDuration: document.getElementById("debug-duration"),
@@ -553,6 +608,9 @@
     elements.chatTitle.textContent = bot ? bot.name : "Chưa có chatbot";
     elements.apiUrl.textContent = apiUrl || "Chưa cấu hình API URL trong config.js";
     elements.apiUrl.classList.toggle("unconfigured", !apiUrl);
+    if (elements.headerBotContext) {
+      elements.headerBotContext.textContent = bot ? bot.name : "Not configured";
+    }
 
     if (!bot) {
       elements.botStatus.textContent = "Chưa có bot enabled trong config.js.";
@@ -564,6 +622,10 @@
       elements.connectionState.textContent = apiUrl ? "Sẵn sàng" : "Chưa cấu hình";
     }
 
+    if (elements.headerStatusContext) {
+      elements.headerStatusContext.textContent = apiUrl ? "Ready" : "Not configured";
+      elements.headerStatusContext.className = "status-pill " + (apiUrl ? "ready" : "pending");
+    }
     updateTestModeDisplay();
   }
 
@@ -595,6 +657,12 @@
   function setConnectionState(label, mode) {
     elements.connectionState.textContent = label;
     elements.connectionState.classList.toggle("loading", mode === "loading");
+    if (elements.headerStatusContext) {
+      elements.headerStatusContext.textContent = label;
+      elements.headerStatusContext.className = "status-pill " + (
+        mode === "loading" ? "running" : getBotApiUrl(state.selectedBot) ? "ready" : "pending"
+      );
+    }
   }
 
   function updateLoadingControls() {
@@ -654,7 +722,116 @@
     }) || null;
   }
 
-  function createTurn(bot, message, displayText, requestPayload, adapter) {
+  function classifyTurnStatus(turn) {
+    const status = String(turn && turn.status || "").toLowerCase();
+    if (turn && turn.error) return "error";
+    if (!turn || status.includes("đang chờ") || status.includes("pending") || status === "—" || !status) {
+      return "pending";
+    }
+    if (/^[45]\d\d\b/.test(status) || ["failed", "failure", "error"].some(function (token) {
+      return status.includes(token);
+    })) {
+      return "error";
+    }
+    return "success";
+  }
+
+  function formatTurnTime(value) {
+    if (!value) return "—";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "—";
+    return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  }
+
+  function formatTurnContext(turn) {
+    const run = turn && turn.runType ? turn.runType : "manual";
+    const channel = turn && turn.channelMode ? turn.channelMode : "website";
+    return run + " · " + channel;
+  }
+
+  function formatTurnStatus(turn, statusKind) {
+    if (statusKind === "pending") return "Pending";
+    const rawStatus = String(turn && turn.status || "").trim();
+    return (statusKind === "error" ? "Error" : "Success") + (
+      rawStatus && rawStatus !== "—" ? " · " + rawStatus : ""
+    );
+  }
+
+  function formatTurnTelegram(turn) {
+    const telegram = turn && turn.debug && turn.debug.telegram;
+    return telegram && (telegram.status || telegram.outcome || telegram.action)
+      ? String(telegram.status || telegram.outcome || telegram.action)
+      : "—";
+  }
+
+  function appendTurnLogCell(row, label, value, className, title) {
+    const cell = document.createElement("td");
+    cell.dataset.label = label;
+    if (className) cell.className = className;
+    const content = document.createElement("span");
+    content.className = "turn-log-cell-content";
+    content.textContent = value;
+    if (title || value !== "—") {
+      content.title = title || value;
+      content.setAttribute("aria-label", title || value);
+    }
+    cell.appendChild(content);
+    row.appendChild(cell);
+  }
+
+  function renderTurnLog() {
+    if (!elements.turnLogBody) return;
+    elements.turnLogBody.replaceChildren();
+    const turns = state.turns.slice().sort(function (left, right) {
+      return right.number - left.number;
+    });
+    const hasTurns = turns.length > 0;
+    elements.turnLogEmpty.hidden = hasTurns;
+    elements.turnLogTableWrap.hidden = !hasTurns;
+    elements.turnLogCount.textContent = turns.length + (turns.length === 1 ? " turn" : " turns");
+
+    turns.forEach(function (turn) {
+      const statusKind = classifyTurnStatus(turn);
+      const row = document.createElement("tr");
+      row.className = "turn-log-row status-" + statusKind;
+      row.dataset.turnId = turn.id;
+      row.tabIndex = 0;
+      row.setAttribute("aria-selected", state.selectedTurnId === turn.id ? "true" : "false");
+      row.classList.toggle("is-selected", state.selectedTurnId === turn.id);
+      row.addEventListener("click", function () {
+        selectTurn(turn.id);
+      });
+      row.addEventListener("keydown", function (event) {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          selectTurn(turn.id);
+        }
+      });
+
+      appendTurnLogCell(row, "Turn", "#" + turn.number, "turn-log-number");
+      appendTurnLogCell(row, "Time", formatTurnTime(turn.createdAt), "turn-log-time", turn.createdAt);
+      appendTurnLogCell(row, "Run / channel", formatTurnContext(turn), "turn-log-context");
+      appendTurnLogCell(row, "User message", turn.displayText || turn.inputText || "—", "turn-log-message");
+
+      const statusCell = document.createElement("td");
+      statusCell.dataset.label = "HTTP / result";
+      const statusBadge = document.createElement("span");
+      statusBadge.className = "turn-status-badge " + statusKind;
+      statusBadge.textContent = formatTurnStatus(turn, statusKind);
+      statusBadge.title = turn.error || turn.status || statusBadge.textContent;
+      statusBadge.setAttribute("aria-label", statusBadge.title);
+      statusCell.appendChild(statusBadge);
+      row.appendChild(statusCell);
+
+      appendTurnLogCell(row, "Response", turn.responseTime || "—", "turn-log-response");
+      appendTurnLogCell(row, "Intent", formatDebugValue(turn.debug && turn.debug.intent), "turn-log-value");
+      appendTurnLogCell(row, "Step", formatDebugValue(turn.debug && turn.debug.step), "turn-log-value");
+      appendTurnLogCell(row, "Telegram", formatTurnTelegram(turn), "turn-log-telegram");
+      elements.turnLogBody.appendChild(row);
+    });
+  }
+
+  function createTurn(bot, message, displayText, requestPayload, adapter, runType) {
     const turn = {
       id: "turn-" + state.nextTurnNumber,
       number: state.nextTurnNumber,
@@ -664,6 +841,7 @@
       channelMode: state.channelMode,
       inputText: message,
       displayText: displayText,
+      runType: runType || "manual",
       request: requestPayload,
       response: null,
       reply: null,
@@ -678,11 +856,13 @@
     state.nextTurnNumber += 1;
     state.turns.push(turn);
     state.selectedTurnId = turn.id;
+    renderTurnLog();
     return turn;
   }
 
   function updateTurn(turn, patch) {
     Object.assign(turn, patch);
+    renderTurnLog();
     if (state.selectedTurnId === turn.id) {
       updateDebug(turn);
     }
@@ -692,6 +872,7 @@
     const turn = getTurn(turnId);
     if (!turn) return;
     state.selectedTurnId = turn.id;
+    renderTurnLog();
     renderMessages(false);
     updateDebug(turn);
   }
@@ -1507,8 +1688,8 @@
       requestId: requestId,
     };
     const requestPayload = adapter.buildRequest(bot, message, state.sessionId, requestContext);
-    const turn = createTurn(bot, message, messageLabel, requestPayload, adapter);
-    turn.runType = isReplayRequest ? "replay" : sendOptions && sendOptions.scenarioId ? "scenario" : "manual";
+    const runType = isReplayRequest ? "replay" : sendOptions && sendOptions.scenarioId ? "scenario" : "manual";
+    const turn = createTurn(bot, message, messageLabel, requestPayload, adapter, runType);
     if (isReplayRequest && sendOptions.replaySourceIndex !== undefined) {
       turn.importedSourceIndex = sendOptions.replaySourceIndex;
     }
@@ -2229,6 +2410,7 @@
     state.turns = [];
     state.selectedTurnId = null;
     state.nextTurnNumber = 1;
+    renderTurnLog();
     updateSessionDisplay();
     renderMessages();
     resetDebug();
@@ -2519,6 +2701,28 @@
   });
   elements.newConversation.addEventListener("click", startNewConversation);
   elements.clearChat.addEventListener("click", clearChat);
+  applyTheme(readThemePreference() || document.documentElement.getAttribute("data-theme") || "light");
+  if (elements.themeToggle) {
+    elements.themeToggle.addEventListener("click", toggleTheme);
+  }
+  if (elements.sidebarToggle) {
+    elements.sidebarToggle.addEventListener("click", function () {
+      setNavigationOpen(!elements.sidebar.classList.contains("is-open"));
+    });
+  }
+  if (elements.sidebarScrim) {
+    elements.sidebarScrim.addEventListener("click", function () {
+      setNavigationOpen(false);
+    });
+  }
+  if (elements.sidebar) {
+    elements.sidebar.addEventListener("click", function (event) {
+      if (event.target.closest("a")) setNavigationOpen(false);
+    });
+  }
+  document.addEventListener("keydown", function (event) {
+    if (event.key === "Escape") setNavigationOpen(false);
+  });
   elements.copySession.addEventListener("click", function () {
     void copySessionId();
   });

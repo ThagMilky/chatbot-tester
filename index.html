@@ -8,22 +8,83 @@
       content="Local QA tool để giả lập client chat và kiểm tra backend debug."
     />
     <title>Chatbot Tester</title>
+    <script>
+      (function () {
+        try {
+          var savedTheme = window.localStorage.getItem("chatbot-tester-theme");
+          if (savedTheme === "dark" || savedTheme === "light") {
+            document.documentElement.setAttribute("data-theme", savedTheme);
+          }
+        } catch (error) {
+          // Theme preference is optional when browser storage is unavailable.
+        }
+      })();
+    </script>
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
     <div class="app-shell">
+      <aside id="sidebar" class="sidebar" aria-label="QA navigation">
+        <div class="sidebar-brand">
+          <div class="brand-mark" aria-hidden="true">Q</div>
+          <div>
+            <strong>Chatbot Tester</strong>
+            <span>Local QA Console</span>
+          </div>
+        </div>
+        <div class="sidebar-status"><span class="status-dot"></span> Local workspace</div>
+        <nav class="sidebar-nav" aria-label="QA sections">
+          <a href="#setup-section"><span class="nav-index">01</span>Setup</a>
+          <a href="#conversation-import-section"><span class="nav-index">02</span>Conversation Import / Replay</a>
+          <a href="#regression-builder-section"><span class="nav-index">03</span>Regression Builder</a>
+          <a href="#scenarios-section"><span class="nav-index">04</span>Test Scenarios</a>
+          <a href="#conversation-workspace"><span class="nav-index">05</span>Conversation Workspace</a>
+          <a href="#backend-debug"><span class="nav-index">06</span>Backend Debug</a>
+          <a href="#export-qa-section"><span class="nav-index">07</span>Export QA</a>
+        </nav>
+        <p class="sidebar-help">Use the phase trail to move from imported evidence to a repeatable QA result.</p>
+      </aside>
+      <button id="sidebar-scrim" class="sidebar-scrim" type="button" aria-label="Close navigation"></button>
+      <div class="app-main">
       <header class="topbar">
+        <button id="sidebar-toggle" class="icon-button menu-button" type="button" aria-label="Open QA navigation" aria-controls="sidebar" aria-expanded="false">
+          <span aria-hidden="true">☰</span>
+        </button>
         <div>
           <p class="eyebrow">LOCAL QA TOOL</p>
           <h1>Chatbot Tester</h1>
           <p class="subtitle">Chat UI và backend debug cho nhiều chatbot.</p>
         </div>
-        <span class="local-badge">localhost</span>
+        <div class="topbar-context" aria-live="polite">
+          <span class="context-label">Selected bot</span>
+          <strong id="header-bot-context">Not configured</strong>
+          <span id="header-status-context" class="status-pill pending">Not configured</span>
+        </div>
+        <div class="topbar-actions">
+          <span class="local-badge">localhost</span>
+          <button id="theme-toggle" class="icon-button theme-button" type="button" aria-label="Switch to dark theme" aria-pressed="false">
+            <span class="theme-icon-sun" aria-hidden="true">☼</span>
+            <span class="theme-icon-moon" aria-hidden="true">◐</span>
+          </button>
+        </div>
       </header>
+
+      <div class="phase-rail" aria-label="QA phase flow">
+        <span class="phase-rail-label">QA flow</span>
+        <span class="phase-step"><b>1</b> Import</span>
+        <span class="phase-arrow" aria-hidden="true">→</span>
+        <span class="phase-step"><b>2</b> Replay</span>
+        <span class="phase-arrow" aria-hidden="true">→</span>
+        <span class="phase-step"><b>3</b> Regression</span>
+        <span class="phase-arrow" aria-hidden="true">→</span>
+        <span class="phase-step"><b>4</b> Run Scenario</span>
+        <span class="phase-arrow" aria-hidden="true">→</span>
+        <span class="phase-step"><b>5</b> AI Behavior</span>
+      </div>
 
       <main class="workspace">
         <div class="chat-column">
-          <section class="control-panel panel" aria-labelledby="setup-title">
+          <section id="setup-section" class="control-panel panel" aria-labelledby="setup-title">
             <div class="panel-heading">
               <div>
                 <p class="section-kicker">Thiết lập</p>
@@ -94,7 +155,7 @@
               <button id="clear-chat" class="secondary-button" type="button">Clear Chat</button>
             </div>
 
-            <section class="tool-section import-section" aria-labelledby="conversation-import-title">
+            <section id="conversation-import-section" class="tool-section import-section" aria-labelledby="conversation-import-title">
               <div class="tool-heading">
                 <div>
                   <p class="section-kicker">Phase 2</p>
@@ -131,7 +192,7 @@
               </div>
             </section>
 
-            <section class="tool-section regression-builder" aria-labelledby="regression-builder-title">
+            <section id="regression-builder-section" class="tool-section regression-builder" aria-labelledby="regression-builder-title">
               <div class="tool-heading">
                 <div>
                   <p class="section-kicker">Phase 3</p>
@@ -185,7 +246,7 @@
               <p class="field-hint">Behavior expectations are evaluated separately by the local server after the deterministic result is shown.</p>
             </section>
 
-            <section class="tool-section" aria-labelledby="scenario-title">
+            <section id="scenarios-section" class="tool-section" aria-labelledby="scenario-title">
               <div class="tool-heading">
                 <div>
                   <p class="section-kicker">Regression</p>
@@ -210,7 +271,7 @@
               </div>
             </section>
 
-            <section class="tool-section" aria-labelledby="export-title">
+            <section id="export-qa-section" class="tool-section" aria-labelledby="export-title">
               <div class="tool-heading">
                 <div>
                   <p class="section-kicker">Shareable output</p>
@@ -228,7 +289,7 @@
             </section>
           </section>
 
-          <section class="chat-panel panel" aria-labelledby="chat-title">
+          <section id="conversation-workspace" class="chat-panel panel" aria-labelledby="chat-title">
             <div class="chat-header">
               <div class="bot-avatar" aria-hidden="true">✦</div>
               <div>
@@ -265,10 +326,43 @@
           </section>
         </div>
 
-        <aside class="debug-panel panel" aria-labelledby="debug-title">
+        <aside id="backend-debug" class="debug-panel panel" aria-labelledby="debug-title">
           <details id="debug-details" open>
             <summary id="debug-title">Backend Debug</summary>
             <p id="debug-message-label" class="debug-subtitle">Chưa có message nào được gửi.</p>
+
+            <section class="turn-log" aria-labelledby="turn-log-title">
+              <div class="debug-label-row turn-log-heading">
+                <div>
+                  <span id="turn-log-title">Request / turn log</span>
+                  <p class="turn-log-hint">Chọn một dòng để xem chi tiết backend bên dưới.</p>
+                </div>
+                <span id="turn-log-count" class="turn-log-count">0 turns</span>
+              </div>
+              <div id="turn-log-empty" class="turn-log-empty">
+                <strong>Chưa có turn nào</strong>
+                <span>Gửi một message để theo dõi request, kết quả và Telegram.</span>
+              </div>
+              <div id="turn-log-table-wrap" class="turn-log-table-wrap" hidden>
+                <table class="turn-log-table">
+                  <caption class="sr-only">Request and turn history, newest turns first</caption>
+                  <thead>
+                    <tr>
+                      <th scope="col">Turn</th>
+                      <th scope="col">Time</th>
+                      <th scope="col">Run / channel</th>
+                      <th scope="col">User message</th>
+                      <th scope="col">HTTP / result</th>
+                      <th scope="col">Response</th>
+                      <th scope="col">Intent</th>
+                      <th scope="col">Step</th>
+                      <th scope="col">Telegram</th>
+                    </tr>
+                  </thead>
+                  <tbody id="turn-log-body"></tbody>
+                </table>
+              </div>
+            </section>
 
             <div class="debug-metrics">
               <div class="metric-card">
@@ -379,6 +473,7 @@
           </details>
         </aside>
       </main>
+      </div>
     </div>
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>

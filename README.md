@@ -1,5 +1,9 @@
 # Chatbot Tester
 
+## UI reference
+
+The dashboard UI is an original reimplementation inspired only by the public [Anngiie/Admin-Dashboard-Design](https://github.com/Anngiie/Admin-Dashboard-Design) Meridian reference. That reference is MIT licensed. No reference assets, remote fonts, icon libraries, or unrelated content are used here.
+
 ## Conversation import / parser (Phase 1)
 
 The UI includes a `Paste Conversation` panel for Messenger-style transcript text. `Scan Conversation` parses an ordered preview of client and bot messages without sending anything to the configured chatbot API.
