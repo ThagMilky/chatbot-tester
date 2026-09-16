@@ -1,5 +1,19 @@
 # Chatbot Tester
 
+## Conversation import / parser (Phase 1)
+
+The UI includes a `Paste Conversation` panel for Messenger-style transcript text. `Scan Conversation` parses an ordered preview of client and bot messages without sending anything to the configured chatbot API.
+
+The parser ignores common transcript noise, including profile/avatar URLs, timestamps, `Seen by` lines, delivery markers, and other metadata-only lines. Configure bot sender names when the transcript uses a custom display name; the selected bot name is included automatically. The preview supports role correction, direct text editing, and deletion of individual parsed entries. These operations are isolated from the existing chat, scenario, debug-history, retry/edit-resend, export, and edge-test flows.
+
+The parser is implemented in `conversation-parser.js` with no npm dependencies. Focused tests use Node's built-in test runner:
+
+```bash
+node --test test/conversation-parser.test.js
+```
+
+Phase 1 intentionally does not replay imported messages, generate regressions, or run AI evaluation.
+
 Local QA tool để giả lập client chat, xem backend debug có cấu trúc và kiểm tra Telegram notification dry-run cho nhiều chatbot. Project dùng HTML, CSS, vanilla JavaScript và Node.js built-in modules; không có npm dependency và không chứa business logic chatbot.
 
 ## Chạy local

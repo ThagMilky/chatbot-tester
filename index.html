@@ -94,6 +94,34 @@
               <button id="clear-chat" class="secondary-button" type="button">Clear Chat</button>
             </div>
 
+            <section class="tool-section import-section" aria-labelledby="conversation-import-title">
+              <div class="tool-heading">
+                <div>
+                  <p class="section-kicker">Phase 1</p>
+                  <h3 id="conversation-import-title">Paste Conversation</h3>
+                </div>
+                <span id="import-status" class="tool-status">Not scanned</span>
+              </div>
+              <label for="conversation-input">Messenger transcript</label>
+              <textarea
+                id="conversation-input"
+                rows="7"
+                placeholder="Paste a Messenger transcript here..."
+                spellcheck="false"
+              ></textarea>
+              <div class="import-options">
+                <label for="import-bot-names">Bot sender names (optional)</label>
+                <input id="import-bot-names" type="text" placeholder="Cyno Software, Bot" />
+              </div>
+              <p class="field-hint">Scan only parses and previews messages. It does not call the chatbot backend.</p>
+              <div class="tool-actions">
+                <button id="scan-conversation" class="primary-button" type="button">Scan Conversation</button>
+              </div>
+              <div id="conversation-preview" class="conversation-preview empty-debug-value">
+                No parsed messages yet.
+              </div>
+            </section>
+
             <section class="tool-section" aria-labelledby="scenario-title">
               <div class="tool-heading">
                 <div>
@@ -286,6 +314,7 @@
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
     <script src="config.js"></script>
+    <script src="conversation-parser.js"></script>
     <script src="app.js"></script>
   </body>
 </html>

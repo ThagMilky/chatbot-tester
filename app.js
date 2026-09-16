@@ -238,6 +238,11 @@
     scenarioResult: document.getElementById("scenario-result"),
     exportFormat: document.getElementById("export-format"),
     exportQa: document.getElementById("export-qa"),
+    conversationInput: document.getElementById("conversation-input"),
+    importBotNames: document.getElementById("import-bot-names"),
+    scanConversation: document.getElementById("scan-conversation"),
+    importStatus: document.getElementById("import-status"),
+    conversationPreview: document.getElementById("conversation-preview"),
     chatTitle: document.getElementById("chat-title"),
     connectionState: document.getElementById("connection-state"),
     messages: document.getElementById("chat-messages"),
@@ -296,6 +301,7 @@
       total: 0,
       result: null,
     },
+    importedMessages: [],
     toastTimer: null,
   };
 
@@ -807,6 +813,102 @@
       turnId: turnId || null,
     });
     renderMessages();
+  }
+
+  function getImportBotNames() {
+    const configuredNames = elements.importBotNames && elements.importBotNames.value
+      ? elements.importBotNames.value.split(/[\n,]/).map(function (name) { return name.trim(); }).filter(Boolean)
+      : [];
+    if (state.selectedBot && state.selectedBot.name) {
+      configuredNames.unshift(state.selectedBot.name);
+    }
+    return configuredNames;
+  }
+
+  function renderConversationPreview() {
+    if (!elements.conversationPreview) return;
+    elements.conversationPreview.replaceChildren();
+
+    if (!state.importedMessages.length) {
+      elements.conversationPreview.className = "conversation-preview empty-debug-value";
+      elements.conversationPreview.textContent = "No parsed messages yet.";
+      return;
+    }
+
+    elements.conversationPreview.className = "conversation-preview";
+    state.importedMessages.forEach(function (message, index) {
+      const item = document.createElement("article");
+      item.className = "imported-message " + message.role;
+
+      const heading = document.createElement("div");
+      heading.className = "imported-message-heading";
+
+      const roleSelect = document.createElement("select");
+      roleSelect.className = "imported-message-role-select";
+      roleSelect.setAttribute("aria-label", "Role for parsed message " + (index + 1));
+      [
+        ["client", "Client"],
+        ["bot", "Bot"],
+      ].forEach(function (roleOption) {
+        const option = document.createElement("option");
+        option.value = roleOption[0];
+        option.textContent = roleOption[1];
+        roleSelect.appendChild(option);
+      });
+      roleSelect.value = message.role === "bot" ? "bot" : "client";
+      roleSelect.addEventListener("change", function (event) {
+        state.importedMessages[index].role = event.target.value === "bot" ? "bot" : "client";
+        renderConversationPreview();
+      });
+
+      const sender = document.createElement("span");
+      sender.className = "imported-message-sender";
+      sender.textContent = message.sender ? " · " + message.sender : "";
+
+      const deleteButton = document.createElement("button");
+      deleteButton.type = "button";
+      deleteButton.className = "message-action import-delete";
+      deleteButton.textContent = "Delete";
+      deleteButton.setAttribute("aria-label", "Delete parsed message " + (index + 1));
+      deleteButton.addEventListener("click", function () {
+        state.importedMessages.splice(index, 1);
+        renderConversationPreview();
+        if (elements.importStatus) {
+          elements.importStatus.textContent = state.importedMessages.length + " message" +
+            (state.importedMessages.length === 1 ? "" : "s") + " in preview";
+        }
+      });
+
+      heading.append(roleSelect, sender, deleteButton);
+
+      const editor = document.createElement("textarea");
+      editor.className = "imported-message-editor";
+      editor.rows = Math.max(2, Math.min(7, String(message.text).split("\n").length + 1));
+      editor.value = message.text;
+      editor.setAttribute("aria-label", "Edit parsed " + (message.role === "bot" ? "bot" : "client") + " message " + (index + 1));
+      editor.addEventListener("input", function (event) {
+        state.importedMessages[index].text = event.target.value;
+      });
+
+      item.append(heading, editor);
+      elements.conversationPreview.appendChild(item);
+    });
+  }
+
+  function scanConversation() {
+    if (!elements.conversationInput || !window.ConversationParser) return;
+    const transcript = elements.conversationInput.value;
+    state.importedMessages = window.ConversationParser.parseMessengerTranscript(transcript, {
+      botNames: getImportBotNames(),
+    });
+    renderConversationPreview();
+    if (elements.importStatus) {
+      elements.importStatus.textContent = state.importedMessages.length + " message" +
+        (state.importedMessages.length === 1 ? "" : "s") + " in preview";
+    }
+    showToast(state.importedMessages.length
+      ? "Conversation scanned. Review the parsed preview before using it."
+      : "No messages found in the transcript.");
   }
 
   function setStatusClass(element, status) {
@@ -1482,12 +1584,16 @@
   elements.copySession.addEventListener("click", function () {
     void copySessionId();
   });
+  if (elements.scanConversation) {
+    elements.scanConversation.addEventListener("click", scanConversation);
+  }
 
   updateSessionDisplay();
   populateBotSelect();
   updateChannelDisplay();
   updateScenarioControls();
   renderMessages();
+  renderConversationPreview();
   resetDebug();
 })();
 
