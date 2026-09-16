@@ -1163,6 +1163,75 @@ pre {
   font-size: 0.68rem;
 }
 
+.ai-behavior-result {
+  display: grid;
+  gap: 5px;
+  margin-top: 12px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--muted);
+  background: #fbfcfe;
+  font-size: 0.72rem;
+  line-height: 1.45;
+}
+
+.ai-behavior-result > strong {
+  color: var(--ink);
+  font-size: 0.8rem;
+}
+
+.ai-behavior-result.status-passed {
+  border-color: #bdebd1;
+  color: #23644b;
+  background: #f6fff9;
+}
+
+.ai-behavior-result.status-failed,
+.ai-behavior-result.status-error {
+  border-color: #ffd1d7;
+  color: var(--danger);
+  background: #fff8f9;
+}
+
+.ai-behavior-result.status-pending {
+  border-color: #cbd5ff;
+  color: #4351a8;
+  background: #f8f9ff;
+}
+
+.ai-behavior-result.status-unavailable,
+.ai-behavior-result.status-skipped,
+.ai-behavior-result.status-not-requested {
+  color: var(--warning);
+}
+
+.ai-behavior-result ul {
+  margin: 2px 0 0;
+  padding-left: 18px;
+}
+
+.ai-behavior-result li.passed {
+  color: #23644b;
+}
+
+.ai-behavior-result li.failed {
+  color: var(--danger);
+}
+
+.ai-behavior-meta {
+  color: var(--soft-muted);
+  font-size: 0.66rem;
+}
+
+.ai-behavior-actions {
+  margin-top: 8px;
+}
+
+.ai-behavior-actions .secondary-button {
+  width: 100%;
+}
+
 .export-row select {
   width: 92px;
 }

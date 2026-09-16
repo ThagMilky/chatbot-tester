@@ -12,7 +12,7 @@ The parser is implemented in `conversation-parser.js` with no npm dependencies. 
 node --test test/conversation-parser.test.js
 ```
 
-Phase 1 intentionally does not generate regressions or run AI evaluation. Phase 2 adds sequential replay of imported client messages; Phase 3 adds deterministic regression scenario generation, while AI evaluation remains out of scope.
+Phase 1 intentionally does not generate regressions or run AI evaluation. Phase 2 adds sequential replay of imported client messages; Phase 3 adds deterministic regression scenario generation; Phase 4 adds optional, separate AI behavior evaluation after a scenario run.
 
 ## Conversation replay (Phase 2)
 
@@ -30,9 +30,38 @@ node --test test/conversation-parser.test.js test/replay-helpers.test.js
 
 After importing a conversation, use `Generate from Conversation / Replay` to create a draft for the selected bot. The draft contains only ordered imported messages with `role=client`; imported bot messages remain reference context and are never sent as scenario inputs. Edit the scenario ID, name, deterministic assertions, and behavior expectations before saving or exporting.
 
-Deterministic assertions are limited to `intent`, `step`/state, extracted fields, Telegram status, and Telegram trigger count. Values are prefilled only when available from the current replay/debug turns. Behavior expectations (`answerLatestQuestion`, `preserveContext`, `noUnnecessaryRepetition`, `noContradictionOrRenegotiation`, and `doNotIgnoreUserQuestion`) are stored separately as Phase 4 metadata and are not evaluated or counted by the current runner.
+Deterministic assertions are limited to `intent`, `step`/state, extracted fields, Telegram status, and Telegram trigger count. Values are prefilled only when available from the current replay/debug turns. Behavior expectations (`answerLatestQuestion`, `preserveContext`, `noUnnecessaryRepetition`, `noContradictionOrRenegotiation`, and `doNotIgnoreUserQuestion`) remain separate Phase 4 metadata and are evaluated by the local server after a completed scenario run; they are never counted as deterministic assertions.
 
 Generated scenarios are stored locally in browser storage and are listed with configured scenarios in the existing Scenario Runner. `Import JSON` accepts a single scenario, an array, or an exported collection. `Export JSON` produces a portable collection without raw backend responses or secrets. Invalid data is rejected without replacing saved scenarios; ID collisions receive deterministic suffixes.
+
+## Behavior evaluation (Phase 4)
+
+After a Scenario Runner execution finishes, the deterministic assertions render immediately and remain the authoritative PASS/FAIL result. When one or more behavior expectations are enabled, the browser sends only the scenario metadata, ordered client messages, visible current bot replies, enabled expectations, and channel mode to `POST /api/evaluate-behavior` on the local server. The separate AI Behavior panel reports pending, PASS, FAIL, unavailable, error, or skipped status, with per-expectation evidence, relevant turn numbers, model, and safe token usage when available. `Re-evaluate Behavior` retries the completed turns without sending chatbot messages again.
+
+The evaluator uses the OpenAI Responses API from the Node server with strict JSON Schema output, `reasoning: { effort }`, `store: false`, and a timeout. Deterministic assertions and AI behavior checks are never merged. AI evaluation judges only observable conversation behavior and does not assess hidden backend state, product/pricing truth, Telegram behavior, or business rules.
+
+Configure the evaluator only through the server environment. `OPENAI_API_KEY` is required for a live evaluation; the other values are optional:
+
+```text
+OPENAI_API_KEY=...
+OPENAI_EVAL_MODEL=gpt-5.6-luna
+OPENAI_EVAL_REASONING=high
+OPENAI_EVAL_TIMEOUT_MS=30000
+OPENAI_API_BASE_URL=https://api.openai.com/v1
+```
+
+PowerShell example using placeholders only:
+
+```powershell
+$env:OPENAI_API_KEY = "[REDACTED_OPENAI_KEY]"
+$env:OPENAI_EVAL_MODEL = "gpt-5.6-luna"
+$env:OPENAI_EVAL_REASONING = "high"
+$env:OPENAI_EVAL_TIMEOUT_MS = "30000"
+$env:OPENAI_API_BASE_URL = "https://api.openai.com/v1"
+node server.js
+```
+
+The API key is never sent to browser code, `config.js`, QA exports, logs, errors, or evaluator response data. Conversation text is treated as untrusted data and is not treated as instructions. If the evaluator is unconfigured, unavailable, times out, refuses, returns an HTTP error, or produces invalid output, the deterministic Scenario Runner remains usable and the AI Behavior panel reports unavailable or error without inventing a verdict. Do not place real keys in this repository or in exported files.
 
 Pure validation, snapshot, storage, and serialization helpers live in `regression-helpers.js` and use only Node/browser built-ins. Focused and existing tests can be run with:
 

@@ -165,7 +165,7 @@
                   </div>
                 </div>
                 <fieldset class="behavior-expectations">
-                  <legend>Behavior expectations <span>(Phase 4; not automatically evaluated)</span></legend>
+                  <legend>Behavior expectations <span>(Phase 4 AI evaluation)</span></legend>
                   <label><input type="checkbox" data-behavior-key="answerLatestQuestion" disabled /> Answer the latest question</label>
                   <label><input type="checkbox" data-behavior-key="preserveContext" disabled /> Preserve context</label>
                   <label><input type="checkbox" data-behavior-key="noUnnecessaryRepetition" disabled /> No unnecessary repetition or re-asking known information</label>
@@ -182,7 +182,7 @@
               <div class="tool-actions">
                 <button id="import-regression" class="secondary-button" type="button">Import JSON</button>
               </div>
-              <p class="field-hint">Behavior expectations are stored as metadata for Phase 4 and are not deterministic PASS/FAIL assertions.</p>
+              <p class="field-hint">Behavior expectations are evaluated separately by the local server after the deterministic result is shown.</p>
             </section>
 
             <section class="tool-section" aria-labelledby="scenario-title">
@@ -201,6 +201,13 @@
                 <button id="run-scenario" class="primary-button" type="button">Run Scenario</button>
               </div>
               <div id="scenario-result" class="scenario-result empty-debug-value">Chưa chạy scenario</div>
+              <div id="ai-behavior-result" class="ai-behavior-result empty-debug-value" aria-live="polite">
+                <strong>AI Behavior</strong>
+                <span>Not requested</span>
+              </div>
+              <div class="tool-actions ai-behavior-actions">
+                <button id="reevaluate-behavior" class="secondary-button" type="button" disabled>Re-evaluate Behavior</button>
+              </div>
             </section>
 
             <section class="tool-section" aria-labelledby="export-title">

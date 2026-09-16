@@ -236,6 +236,8 @@
     runScenario: document.getElementById("run-scenario"),
     scenarioProgress: document.getElementById("scenario-progress"),
     scenarioResult: document.getElementById("scenario-result"),
+    aiBehaviorResult: document.getElementById("ai-behavior-result"),
+    reevaluateBehavior: document.getElementById("reevaluate-behavior"),
     exportFormat: document.getElementById("export-format"),
     exportQa: document.getElementById("export-qa"),
     conversationInput: document.getElementById("conversation-input"),
@@ -318,6 +320,10 @@
       current: 0,
       total: 0,
       result: null,
+      runToken: null,
+      evaluationInput: null,
+      behaviorEvaluation: null,
+      evaluationRequestToken: null,
     },
     importedMessages: [],
     regression: {
@@ -1873,9 +1879,98 @@
     }) || null;
   }
 
+  function getBehaviorKeys() {
+    return window.RegressionHelpers && Array.isArray(window.RegressionHelpers.BEHAVIOR_KEYS)
+      ? window.RegressionHelpers.BEHAVIOR_KEYS.slice()
+      : [
+          "answerLatestQuestion",
+          "preserveContext",
+          "noUnnecessaryRepetition",
+          "noContradictionOrRenegotiation",
+          "doNotIgnoreUserQuestion",
+        ];
+  }
+
+  function getEnabledBehaviorKeys(expectations) {
+    const source = isObject(expectations) ? expectations : {};
+    return getBehaviorKeys().filter(function (key) { return source[key] === true; });
+  }
+
+  function invalidateScenarioEvaluation() {
+    state.scenario.runToken = {};
+    state.scenario.evaluationInput = null;
+    state.scenario.behaviorEvaluation = null;
+    state.scenario.evaluationRequestToken = null;
+  }
+
+  function formatBehaviorKey(key) {
+    return {
+      answerLatestQuestion: "Answer latest question",
+      preserveContext: "Preserve context",
+      noUnnecessaryRepetition: "No unnecessary repetition",
+      noContradictionOrRenegotiation: "No contradiction or renegotiation",
+      doNotIgnoreUserQuestion: "Do not ignore user question",
+    }[key] || key;
+  }
+
+  function renderBehaviorEvaluation(evaluation) {
+    if (!elements.aiBehaviorResult) return;
+    elements.aiBehaviorResult.replaceChildren();
+    const current = evaluation || { status: "not-requested" };
+    const status = ["pending", "completed", "skipped", "unavailable", "error", "not-requested"].includes(current.status)
+      ? current.status
+      : "error";
+    elements.aiBehaviorResult.className = "ai-behavior-result status-" + status;
+    const heading = document.createElement("strong");
+    heading.textContent = "AI Behavior · " + (
+      status === "completed" ? (current.overallPassed ? "PASS" : "FAIL") : status.toUpperCase()
+    );
+    elements.aiBehaviorResult.appendChild(heading);
+
+    const summary = document.createElement("span");
+    summary.textContent = current.summary || (
+      status === "pending" ? "Evaluating completed scenario turns..." :
+          status === "skipped" ? "No behavior expectations are enabled." :
+            status === "not-requested" ? "Run a scenario to request behavior evaluation." :
+          status === "unavailable" ? "Behavior evaluation is unavailable." :
+            status === "error" ? "Behavior evaluation failed safely." : ""
+    );
+    elements.aiBehaviorResult.appendChild(summary);
+
+    if (status === "completed" && Array.isArray(current.checks)) {
+      const list = document.createElement("ul");
+      current.checks.forEach(function (check) {
+        const item = document.createElement("li");
+        item.className = check.passed ? "passed" : "failed";
+        const turns = Array.isArray(check.turnIndices) && check.turnIndices.length
+          ? " · turns " + check.turnIndices.join(", ")
+          : "";
+        item.textContent = (check.passed ? "✓ " : "✗ ") + formatBehaviorKey(check.key) + " · " + check.reason + turns;
+        list.appendChild(item);
+      });
+      elements.aiBehaviorResult.appendChild(list);
+    }
+
+    const metadata = [];
+    if (current.model) metadata.push("Model: " + current.model);
+    if (current.usage && isObject(current.usage)) {
+      const tokenParts = ["input_tokens", "output_tokens", "total_tokens"]
+        .filter(function (key) { return Number.isSafeInteger(current.usage[key]); })
+        .map(function (key) { return key.replace("_tokens", "") + " " + current.usage[key]; });
+      if (tokenParts.length) metadata.push("Tokens: " + tokenParts.join(" / "));
+    }
+    if (metadata.length) {
+      const meta = document.createElement("span");
+      meta.className = "ai-behavior-meta";
+      meta.textContent = metadata.join(" · ");
+      elements.aiBehaviorResult.appendChild(meta);
+    }
+  }
+
   function renderScenarioResult(report) {
     if (!elements.scenarioResult) return;
     elements.scenarioResult.replaceChildren();
+    renderBehaviorEvaluation(state.scenario.behaviorEvaluation);
     if (!report) {
       elements.scenarioResult.className = "scenario-result empty-debug-value";
       elements.scenarioResult.textContent = "Chưa chạy scenario";
@@ -1908,9 +2003,10 @@
     if (report.behaviorExpectations && Object.keys(report.behaviorExpectations).length) {
       const note = document.createElement("p");
       note.className = "scenario-behavior-note";
-      note.textContent = "Behavior expectations are stored metadata only; Phase 3 does not automatically evaluate them.";
+      note.textContent = "AI behavior checks are shown separately and never change deterministic assertions.";
       elements.scenarioResult.appendChild(note);
     }
+    renderBehaviorEvaluation(state.scenario.behaviorEvaluation);
   }
 
   function updateScenarioControls() {
@@ -1952,7 +2048,114 @@
       }
     }
     renderScenarioResult(state.scenario.result);
+    if (elements.reevaluateBehavior) {
+      const enabled = getEnabledBehaviorKeys(state.scenario.evaluationInput && state.scenario.evaluationInput.behaviorExpectations);
+      elements.reevaluateBehavior.disabled = state.scenario.running ||
+        !state.scenario.result || !state.scenario.evaluationInput || !enabled.length ||
+        (state.scenario.behaviorEvaluation && state.scenario.behaviorEvaluation.status === "pending");
+    }
     renderRegressionDraft();
+  }
+
+  function createBehaviorEvaluationInput(scenario, turns) {
+    const expectations = {};
+    getEnabledBehaviorKeys(scenario.behaviorExpectations).forEach(function (key) {
+      expectations[key] = true;
+    });
+    return {
+      scenario: {
+        id: String(scenario.id || "scenario"),
+        name: String(scenario.name || scenario.id || "Scenario"),
+      },
+      messages: scenario.messages.map(function (message) { return String(message); }),
+      replies: scenario.messages.map(function (message, index) {
+        const turn = turns[index];
+        return turn && typeof turn.reply === "string" ? turn.reply : "";
+      }),
+      behaviorExpectations: expectations,
+      channelMode: ["website", "messenger"].includes(scenario.channelMode)
+        ? scenario.channelMode
+        : state.channelMode,
+    };
+  }
+
+  function isValidBehaviorEvaluation(value, enabledKeys) {
+    if (!isObject(value) || typeof value.overallPassed !== "boolean" || typeof value.summary !== "string" || !Array.isArray(value.checks)) {
+      return false;
+    }
+    if (value.checks.length !== enabledKeys.length) return false;
+    const seen = new Set();
+    let allPassed = true;
+    for (const check of value.checks) {
+      if (!isObject(check) || !enabledKeys.includes(check.key) || seen.has(check.key) ||
+        typeof check.passed !== "boolean" || typeof check.reason !== "string" || !Array.isArray(check.turnIndices)) {
+        return false;
+      }
+      seen.add(check.key);
+      allPassed = allPassed && check.passed;
+    }
+    return seen.size === enabledKeys.length && allPassed === value.overallPassed;
+  }
+
+  async function evaluateScenarioBehavior(input, runToken) {
+    if (!input || !runToken || state.scenario.runToken !== runToken) return;
+    const enabledKeys = getEnabledBehaviorKeys(input.behaviorExpectations);
+    if (!enabledKeys.length) {
+      state.scenario.behaviorEvaluation = {
+        status: "skipped",
+        summary: "No behavior expectations are enabled.",
+        checks: [],
+      };
+      updateScenarioControls();
+      return;
+    }
+
+    const requestToken = {};
+    state.scenario.evaluationRequestToken = requestToken;
+    state.scenario.behaviorEvaluation = { status: "pending" };
+    updateScenarioControls();
+    try {
+      const response = await fetch("/api/evaluate-behavior", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(input),
+      });
+      let body = null;
+      try {
+        body = JSON.parse(await response.text());
+      } catch (error) {
+        body = null;
+      }
+      if (state.scenario.runToken !== runToken || state.scenario.evaluationRequestToken !== requestToken) return;
+      if (!response.ok) {
+        state.scenario.behaviorEvaluation = {
+          status: body && body.status === "unavailable" ? "unavailable" : "error",
+        };
+      } else if (body && body.status === "skipped") {
+        state.scenario.behaviorEvaluation = { status: "skipped", summary: body.summary, checks: [] };
+      } else if (!isValidBehaviorEvaluation(body, enabledKeys)) {
+        state.scenario.behaviorEvaluation = { status: "error" };
+      } else {
+        state.scenario.behaviorEvaluation = {
+          status: "completed",
+          overallPassed: body.overallPassed,
+          summary: body.summary,
+          checks: body.checks,
+          model: typeof body.model === "string" ? body.model : undefined,
+          usage: isObject(body.usage) ? body.usage : undefined,
+        };
+      }
+      updateScenarioControls();
+    } catch (error) {
+      if (state.scenario.runToken !== runToken || state.scenario.evaluationRequestToken !== requestToken) return;
+      state.scenario.behaviorEvaluation = { status: "error" };
+      updateScenarioControls();
+    }
+  }
+
+  function reevaluateBehavior() {
+    if (state.scenario.running || !state.scenario.result || !state.scenario.evaluationInput) return;
+    void evaluateScenarioBehavior(state.scenario.evaluationInput, state.scenario.runToken);
   }
 
   function valuesMatch(actual, expected) {
@@ -2020,6 +2223,7 @@
   }
 
   function resetConversationData() {
+    invalidateScenarioEvaluation();
     state.sessionId = createSessionId();
     state.messages = [];
     state.turns = [];
@@ -2056,6 +2260,8 @@
     state.scenario.total = scenario.messages.length;
     state.scenario.result = null;
     resetConversationData();
+    const runToken = {};
+    state.scenario.runToken = runToken;
     updateBotDisplay();
     updateChannelDisplay();
     updateScenarioControls();
@@ -2069,11 +2275,21 @@
 
     state.scenario.running = false;
     state.scenario.result = evaluateScenario(scenario, state.turns);
+    state.scenario.evaluationInput = createBehaviorEvaluationInput(scenario, state.turns);
+    state.scenario.behaviorEvaluation = getEnabledBehaviorKeys(state.scenario.evaluationInput.behaviorExpectations).length
+      ? { status: "pending" }
+      : { status: "skipped", summary: "No behavior expectations are enabled.", checks: [] };
     updateScenarioControls();
     showToast(state.scenario.result.passed ? "Scenario PASS." : "Scenario FAIL.");
+    void evaluateScenarioBehavior(state.scenario.evaluationInput, runToken);
   }
 
   function buildQaReport() {
+    const scenarioReport = state.scenario.result
+      ? Object.assign({}, state.scenario.result, {
+          behaviorEvaluation: state.scenario.behaviorEvaluation,
+        })
+      : null;
     return {
       format: "chatbot-tester-qa-v1",
       exportedAt: new Date().toISOString(),
@@ -2094,7 +2310,7 @@
         };
       }),
       turns: state.turns,
-      scenario: state.scenario.result,
+      scenario: scenarioReport,
     };
   }
 
@@ -2162,7 +2378,17 @@
 
   function startNewConversation() {
     if (state.scenario.running || isReplayLocked()) return;
-    state.scenario = { running: false, scenarioId: state.scenario.scenarioId, current: 0, total: 0, result: null };
+    state.scenario = {
+      running: false,
+      scenarioId: state.scenario.scenarioId,
+      current: 0,
+      total: 0,
+      result: null,
+      runToken: {},
+      evaluationInput: null,
+      behaviorEvaluation: null,
+      evaluationRequestToken: null,
+    };
     resetConversationData();
     updateScenarioControls();
     showToast("Đã tạo conversation và session mới.");
@@ -2171,8 +2397,10 @@
 
   function clearChat() {
     if (isReplayLocked()) return;
+    invalidateScenarioEvaluation();
     state.messages = [];
     renderMessages();
+    updateScenarioControls();
     showToast("Đã clear chat. Session ID được giữ nguyên.");
     elements.messageInput.focus();
   }
@@ -2187,6 +2415,7 @@
   }
 
   elements.botSelect.addEventListener("change", function (event) {
+    invalidateScenarioEvaluation();
     state.selectedBot = state.bots.find(function (bot) {
       return bot.id === event.target.value;
     }) || null;
@@ -2202,6 +2431,7 @@
   });
   if (elements.channelMode) {
     elements.channelMode.addEventListener("change", function (event) {
+      invalidateScenarioEvaluation();
       state.channelMode = event.target.value === "messenger" ? "messenger" : "website";
       clearSuggestedOptions();
       renderMessages();
@@ -2225,6 +2455,7 @@
   }
   if (elements.scenarioSelect) {
     elements.scenarioSelect.addEventListener("change", function (event) {
+      invalidateScenarioEvaluation();
       state.scenario.scenarioId = event.target.value || null;
       state.scenario.result = null;
       state.scenario.current = 0;
@@ -2243,6 +2474,9 @@
     elements.runScenario.addEventListener("click", function () {
       void runScenario();
     });
+  }
+  if (elements.reevaluateBehavior) {
+    elements.reevaluateBehavior.addEventListener("click", reevaluateBehavior);
   }
   if (elements.runReplay) {
     elements.runReplay.addEventListener("click", runReplay);
