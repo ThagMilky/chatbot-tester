@@ -352,6 +352,17 @@
 
             <form id="chat-form" class="composer">
               <label class="sr-only" for="message-input">Nội dung tin nhắn</label>
+              <fieldset id="sender-mode-controls" class="sender-mode-controls" hidden>
+                <legend>Send as</legend>
+                <label class="sender-mode-option">
+                  <input type="radio" name="sender-mode" value="client" checked />
+                  <span>Client</span>
+                </label>
+                <label class="sender-mode-option">
+                  <input type="radio" name="sender-mode" value="staff" />
+                  <span>Staff</span>
+                </label>
+              </fieldset>
               <textarea
                 id="message-input"
                 rows="2"
@@ -434,6 +445,10 @@
               <div class="summary-item">
                 <span>LLM / model</span>
                 <strong id="debug-model">—</strong>
+              </div>
+              <div class="summary-item">
+                <span>Human Takeover</span>
+                <strong id="debug-human-takeover" class="takeover-status inactive">INACTIVE</strong>
               </div>
             </div>
 

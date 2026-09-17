@@ -45,6 +45,20 @@ test("builds a client-only replay plan with the immediately following original b
   assert.equal(importedMessages[2].text, "First original reply");
 });
 
+test("does not include staff transcript content in the replay plan", () => {
+  const plan = createReplayPlan([
+    { role: "client", text: "Client question" },
+    { role: "staff", text: "Staff reference reply" },
+    { role: "client", text: "Next client question" },
+  ]);
+
+  assert.deepEqual(plan.map((entry) => entry.clientText), [
+    "Client question",
+    "Next client question",
+  ]);
+  assert.equal(plan[0].originalBotReply, null);
+});
+
 test("creates fresh replay progress and advances only after a completed turn", () => {
   const plan = createReplayPlan([
     { role: "client", text: "One" },

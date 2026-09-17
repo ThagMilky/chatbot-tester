@@ -5,6 +5,7 @@ window.CHATBOT_CONFIG = [
     name: "Cyno Software",
     adapter: "cyno-software",
     apiUrl: "http://127.0.0.1:3000/api/chat",
+    staffApiUrl: "http://127.0.0.1:3000/api/chat-test/staff-message",
     enabled: true,
     channels: {
       website: {

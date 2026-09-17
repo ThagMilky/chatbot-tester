@@ -160,3 +160,70 @@ test("does not emit profile, seen, timestamp, or delivery-only lines", () => {
   assert.deepEqual(messages.map((message) => message.text), ["Hello", "Hi there"]);
   assert.deepEqual(messages.map((message) => message.role), ["client", "bot"]);
 });
+
+test("parses Messenger profile markers without alternating bot paragraphs into clients", () => {
+  const profileUrl = "https://scontent.example/nguyen-the-mai.jpg";
+  const transcript = [
+    "Tôi muốn tư vấn phần mềm ERP",
+    "",
+    "Dạ, chào anh/chị...",
+    "",
+    "Dạ, Cyno có thể khảo sát...",
+    "",
+    "Cho em hỏi thêm...",
+    "",
+    `[Nguyễn Thế Mai](${profileUrl})`,
+    "",
+    "Bán lẻ / cửa hàng",
+    "",
+    "Hiện tại bên mình đang gặp khó khăn nhất ở khâu nào ạ?",
+    "",
+    `[Nguyễn Thế Mai](${profileUrl})`,
+    "",
+    "Tồn kho/dữ liệu lệch",
+    "",
+    "Dạ, em đã ghi nhận...",
+    "",
+    "Bên mình dùng excel",
+    "",
+    "[🥰](https://static.xx.fbcdn.net/reaction.svg)",
+    "**1**",
+    "svg",
+    "Seen by Nguyễn Thế Mai",
+  ].join("\n");
+
+  const messages = parseMessengerTranscript(transcript);
+
+  assert.deepEqual(messages.map((message) => [message.role, message.text]), [
+    ["client", "Tôi muốn tư vấn phần mềm ERP"],
+    ["bot", "Dạ, chào anh/chị...\n\nDạ, Cyno có thể khảo sát...\n\nCho em hỏi thêm..."],
+    ["client", "Bán lẻ / cửa hàng"],
+    ["bot", "Hiện tại bên mình đang gặp khó khăn nhất ở khâu nào ạ?"],
+    ["client", "Tồn kho/dữ liệu lệch"],
+    ["bot", "Dạ, em đã ghi nhận...\n\nBên mình dùng excel"],
+  ]);
+  assert.equal(messages.some((message) => /scontent|fbcdn|reaction|Seen|svg|\*\*1\*\*/iu.test(message.text)), false);
+});
+
+test("classifies Sent by staff attribution as non-client content", () => {
+  const profileUrl = "https://scontent.example/avatar.jpg";
+  const transcript = [
+    `[Nguyễn Thế Mai](${profileUrl})`,
+    "Tôi muốn tư vấn ERP",
+    "",
+    "Chào anh, em là Phát. Em hỗ trợ anh trực tiếp nhé.",
+    `Sent by [**Vũ Thuận Phát**](${profileUrl})`,
+    "",
+    `[Nguyễn Thế Mai](${profileUrl})`,
+    "Anh cần quản lý kho.",
+  ].join("\n");
+
+  const messages = parseMessengerTranscript(transcript);
+
+  assert.deepEqual(messages.map((message) => ({ role: message.role, text: message.text })), [
+    { role: "client", text: "Tôi muốn tư vấn ERP" },
+    { role: "staff", text: "Chào anh, em là Phát. Em hỗ trợ anh trực tiếp nhé." },
+    { role: "client", text: "Anh cần quản lý kho." },
+  ]);
+  assert.equal(messages.some((message) => message.role === "client" && /Phát/u.test(message.text)), false);
+});

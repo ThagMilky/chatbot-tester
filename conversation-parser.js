@@ -59,7 +59,7 @@
     const separatorIndex = value.indexOf("](");
     if (separatorIndex <= 1) return null;
 
-    const label = value.slice(1, separatorIndex).trim();
+    const label = value.slice(1, separatorIndex).trim().replace(/^\*\*(.+)\*\*$/u, "$1").trim();
     const destination = value.slice(separatorIndex + 2, -1).trim();
     if (!label || !isUrlLine(destination)) return null;
 
@@ -82,12 +82,19 @@
 
     return [
       /^(?:seen by|seen|đã xem(?: bởi)?|đã đọc(?: bởi)?)/iu,
-      /^(?:sent|delivered|message sent|message delivered|đã gửi|đã nhận|đã chuyển)/iu,
+      /^(?:sent by|sent|delivered|message sent|message delivered|đã gửi|đã nhận|đã chuyển)/iu,
       /^(?:profile|avatar|photo|image)\s*(?:url|link)?\s*:/iu,
       /^(?:you|bạn)\s+(?:sent|đã gửi|replied|đã trả lời)\b/iu,
       /^(?:reacted to|đã bày tỏ cảm xúc|liked a message|đã thích một tin nhắn)/iu,
+      /^svg$/iu,
+      /^\*{0,2}\d+\*{0,2}$/u,
       /^[-_=]{3,}$/u,
     ].some(function (pattern) { return pattern.test(value); });
+  }
+
+  function isReactionLabel(label) {
+    const value = String(label || "").replace(/[*_`]/g, "").trim();
+    return !value || /^[\p{Extended_Pictographic}\uFE0F\u200D\s]+$/u.test(value);
   }
 
   function roleForSender(sender, botNames, clientNames, fallbackRoles) {
@@ -115,8 +122,14 @@
     const value = line.trim();
     const markdownLink = parseStandaloneMarkdownLink(value);
     if (markdownLink) {
-      if (isNoiseLine(markdownLink.label)) return null;
-      return { sender: markdownLink.label, inlineText: "" };
+      if (isReactionLabel(markdownLink.label) || /^seen\b/iu.test(markdownLink.label)) return null;
+      const key = normalize(markdownLink.label);
+      return {
+        sender: markdownLink.label,
+        inlineText: "",
+        kind: "profile",
+        role: botNames.includes(key) ? "bot" : clientNames.includes(key) ? "client" : "client",
+      };
     }
 
     const colonIndex = value.indexOf(":");
@@ -124,13 +137,13 @@
       const sender = value.slice(0, colonIndex).trim();
       const inlineText = value.slice(colonIndex + 1).trim();
       if (isExplicitRoleName(sender, botNames, clientNames) || /\b(?:bot|assistant|admin|agent|support|cyno|software|client|user|customer)\b/iu.test(sender)) {
-        return { sender: sender, inlineText: inlineText };
+        return { sender: sender, inlineText: inlineText, role: roleForSender(sender, botNames, clientNames, new Map()) };
       }
     }
 
     const key = normalize(value);
     if (isExplicitRoleName(value, botNames, clientNames) || repeatedLines.has(key)) {
-      return { sender: value, inlineText: "" };
+      return { sender: value, inlineText: "", role: roleForSender(value, botNames, clientNames, new Map()) };
     }
 
     return null;
@@ -155,54 +168,85 @@
         .filter(function (entry) { return entry[1] >= 2; })
         .map(function (entry) { return entry[0]; }),
     );
-    const fallbackRoles = new Map();
-    const messages = [];
-    let currentRole = null;
-    let currentSender = null;
+    const blocks = [];
     let currentParts = [];
+    let markerForNextBlock = null;
 
-    function flush() {
+    function flushBlock() {
       const text = currentParts.join("\n").replace(/[ \t]+\n/g, "\n").trim();
-      if (text) {
-        messages.push({
-          role: currentRole || (messages.length % 2 === 0 ? "client" : "bot"),
-          text: text,
-          sender: currentSender,
-        });
-        currentRole = null;
-        currentSender = null;
-      }
+      if (text) blocks.push({ text: text, marker: markerForNextBlock });
       currentParts = [];
+      markerForNextBlock = null;
     }
 
     lines.forEach(function (line) {
       const value = line.trim();
-      const senderLine = value ? parseSenderLine(value, botNames, clientNames, repeatedLines) : null;
+      if (!value) {
+        flushBlock();
+        return;
+      }
 
-      if (senderLine) {
-        flush();
-        currentSender = senderLine.sender;
-        currentRole = roleForSender(currentSender, botNames, clientNames, fallbackRoles);
-        if (senderLine.inlineText && !isNoiseLine(senderLine.inlineText)) {
-          currentParts.push(senderLine.inlineText);
+      const staffAttribution = value.match(/^sent\s+by\s+(.+)$/iu);
+      if (staffAttribution) {
+        flushBlock();
+        const staffLink = parseStandaloneMarkdownLink(staffAttribution[1].trim());
+        const sender = staffLink ? staffLink.label : staffAttribution[1].trim().replace(/^\*\*(.+)\*\*$/u, "$1");
+        const previous = blocks[blocks.length - 1];
+        if (previous) {
+          previous.attribution = true;
+          previous.sender = sender;
+        } else {
+          markerForNextBlock = { role: "staff", sender: sender, kind: "staff" };
         }
         return;
       }
 
-      if (!value) {
-        flush();
+      const senderLine = parseSenderLine(value, botNames, clientNames, repeatedLines);
+      if (senderLine) {
+        flushBlock();
+        markerForNextBlock = senderLine;
+        if (senderLine.inlineText && !isNoiseLine(senderLine.inlineText)) currentParts.push(senderLine.inlineText);
         return;
       }
 
-      if (isNoiseLine(value)) {
-        if (currentParts.length) flush();
-        return;
-      }
-
+      if (isNoiseLine(value)) return;
       currentParts.push(value);
     });
+    flushBlock();
 
-    flush();
+    const hasExplicitClientMarker = blocks.some(function (block) {
+      return block.marker && block.marker.role === "client";
+    });
+    const messages = [];
+    let hasMeaningfulMessage = false;
+    let nextUnmarkedRole = null;
+
+    function appendMessage(role, text, sender) {
+      const previous = messages[messages.length - 1];
+      if (previous && previous.role === role && role !== "client") {
+        previous.text += "\n\n" + text;
+        if (!previous.sender && sender) previous.sender = sender;
+        return;
+      }
+      messages.push({ role: role, text: text, sender: sender || null });
+    }
+
+    blocks.forEach(function (block) {
+      const marker = block.marker;
+      let role = block.attribution ? "staff" : marker && marker.role;
+      let sender = block.attribution ? block.sender : marker && marker.sender;
+
+      if (!role) {
+        if (!hasMeaningfulMessage) role = "client";
+        else if (!hasExplicitClientMarker && !nextUnmarkedRole) role = "bot";
+        else role = nextUnmarkedRole || "bot";
+      }
+
+      appendMessage(role === "staff" || role === "bot" ? role : "client", block.text, sender);
+      hasMeaningfulMessage = true;
+      nextUnmarkedRole = role === "client" ? "bot" : "bot";
+    });
+
     return messages;
   }
 

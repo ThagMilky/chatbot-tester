@@ -436,6 +436,11 @@ textarea:focus {
   align-items: flex-end;
 }
 
+.message-row.staff {
+  align-self: flex-end;
+  align-items: flex-end;
+}
+
 .message-row.bot,
 .message-row.error,
 .message-row.system {
@@ -466,6 +471,13 @@ textarea:focus {
   border-bottom-right-radius: 5px;
   color: #fff;
   background: var(--accent);
+}
+
+.message-row.staff .message-bubble {
+  border: 1px solid #f0c98b;
+  border-bottom-right-radius: 5px;
+  color: #6b4310;
+  background: #fff8e8;
 }
 
 .message-row.bot .message-bubble {
@@ -529,6 +541,46 @@ textarea:focus {
   padding: 15px 17px 17px;
   border-top: 1px solid var(--line);
   background: #fff;
+}
+
+.sender-mode-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 9px;
+  padding: 0;
+  border: 0;
+}
+
+.sender-mode-controls legend {
+  margin-right: 3px;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.sender-mode-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 9px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--ink);
+  background: var(--page);
+  cursor: pointer;
+  font-size: 0.74rem;
+  font-weight: 750;
+}
+
+.sender-mode-option:has(input:checked) {
+  border-color: #f0c98b;
+  color: #6b4310;
+  background: #fff8e8;
+}
+
+.sender-mode-option input {
+  accent-color: var(--accent);
 }
 
 textarea {
@@ -634,6 +686,14 @@ textarea {
   color: var(--ink);
   font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
   font-size: 0.78rem;
+}
+
+.takeover-status.active {
+  color: #9a5b00;
+}
+
+.takeover-status.inactive {
+  color: var(--muted);
 }
 
 .debug-block {
@@ -1010,6 +1070,11 @@ pre {
 .imported-message.client {
   border-color: #d9d7ff;
   background: #fcfcff;
+}
+
+.imported-message.staff {
+  border-color: #f0d5a5;
+  background: #fffdf7;
 }
 
 .imported-message-heading {

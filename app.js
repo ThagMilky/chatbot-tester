@@ -234,6 +234,13 @@
       model: firstValue(source.model, source.llm),
       durationMs: toNumberOrNull(source.durationMs),
       pipeline: normalizePipeline(firstValue(source.pipeline, source.events, source.steps)),
+      humanTakeover: isObject(source.humanTakeover) ? {
+        active: source.humanTakeover.active === true,
+        reason: firstValue(source.humanTakeover.reason),
+        mode: firstValue(source.humanTakeover.mode),
+        freezeUntil: firstValue(source.humanTakeover.freezeUntil),
+        lastStaffMessageAt: firstValue(source.humanTakeover.lastStaffMessageAt),
+      } : null,
       error: firstValue(source.error, source.errorMessage),
       stack: firstValue(source.stackTrace, source.stack),
       telegram: telegram,
@@ -279,6 +286,8 @@
     newConversation: document.getElementById("new-conversation"),
     clearChat: document.getElementById("clear-chat"),
     channelMode: document.getElementById("channel-mode"),
+    senderModeControls: document.getElementById("sender-mode-controls"),
+    senderModeInputs: document.querySelectorAll("input[name='sender-mode']"),
     edgeTestMode: document.getElementById("edge-test-mode"),
     edgeTestHint: document.getElementById("edge-test-hint"),
     edgeTestLabel: document.getElementById("edge-test-label"),
@@ -342,6 +351,7 @@
     debugIntent: document.getElementById("debug-intent"),
     debugStep: document.getElementById("debug-step"),
     debugModel: document.getElementById("debug-model"),
+    debugHumanTakeover: document.getElementById("debug-human-takeover"),
     requestJson: document.getElementById("request-json"),
     debugFields: document.getElementById("debug-fields"),
     pipelineList: document.getElementById("pipeline-list"),
@@ -376,6 +386,7 @@
     isSending: false,
     activeRequestCount: 0,
     channelMode: "website",
+    senderMode: "client",
     edgeTestMode: false,
     duplicateEventMode: false,
     scenario: {
@@ -491,6 +502,10 @@
 
   function getBotApiUrl(bot) {
     return bot && typeof bot.apiUrl === "string" ? bot.apiUrl.trim() : "";
+  }
+
+  function getStaffApiUrl(bot) {
+    return bot && typeof bot.staffApiUrl === "string" ? bot.staffApiUrl.trim() : "";
   }
 
   function getTestMode(bot) {
@@ -633,6 +648,15 @@
     if (elements.channelMode) {
       elements.channelMode.setAttribute("aria-label", isMessenger ? "Messenger mode" : "Website mode");
     }
+    if (elements.senderModeControls) {
+      elements.senderModeControls.hidden = !isMessenger;
+    }
+    if (elements.senderModeInputs) {
+      elements.senderModeInputs.forEach(function (input) {
+        input.checked = isMessenger && input.value === state.senderMode;
+        input.disabled = !isMessenger || state.isSending || isReplayLocked() || isSimulatorLocked();
+      });
+    }
   }
 
   function updateBotDisplay() {
@@ -703,6 +727,9 @@
     const simulatorLocked = isSimulatorLocked();
     const lockInput = isReplayLocked() || simulatorLocked || (state.isSending && !state.edgeTestMode);
     elements.sendButton.disabled = lockInput || !getBotApiUrl(state.selectedBot);
+    if (state.channelMode === "messenger" && state.senderMode === "staff") {
+      elements.sendButton.disabled = lockInput || !getStaffApiUrl(state.selectedBot);
+    }
     elements.messageInput.disabled = lockInput;
     elements.botSelect.disabled = state.isSending || isReplayLocked() || simulatorLocked || !state.bots.length;
     elements.newConversation.disabled = state.isSending || isReplayLocked() || simulatorLocked;
@@ -782,7 +809,8 @@
   function formatTurnContext(turn) {
     const run = turn && turn.runType ? turn.runType : "manual";
     const channel = turn && turn.channelMode ? turn.channelMode : "website";
-    return run + " · " + channel;
+    const sender = turn && turn.sender ? " · " + turn.sender : "";
+    return run + " · " + channel + sender;
   }
 
   function formatTurnStatus(turn, statusKind) {
@@ -867,7 +895,7 @@
     });
   }
 
-  function createTurn(bot, message, displayText, requestPayload, adapter, runType) {
+  function createTurn(bot, message, displayText, requestPayload, adapter, runType, senderMode) {
     const turn = {
       id: "turn-" + state.nextTurnNumber,
       number: state.nextTurnNumber,
@@ -878,6 +906,7 @@
       inputText: message,
       displayText: displayText,
       runType: runType || "manual",
+      sender: senderMode === "staff" ? "staff" : "client",
       request: requestPayload,
       response: null,
       reply: null,
@@ -974,6 +1003,7 @@
       const requestId = turn.request.messageId || turn.request.eventId;
       if (requestId) sendOptions.requestId = requestId;
     }
+    if (turn.sender === "staff") sendOptions.senderMode = "staff";
     void sendMessage(inputText, mode === "edit" ? inputText : message.text, sendOptions);
   }
 
@@ -1008,7 +1038,15 @@
 
       const meta = document.createElement("span");
       meta.className = "message-meta";
-      meta.textContent = message.type === "user" ? "Bạn" : message.type === "bot" ? "Bot" : "Tester";
+      meta.textContent = message.type === "user"
+        ? "Client"
+        : message.type === "staff"
+          ? "Staff"
+          : message.type === "bot"
+            ? "Bot"
+            : message.type === "system"
+              ? "Bot status"
+              : "Tester";
 
       const bubble = document.createElement("div");
       bubble.className = "message-bubble";
@@ -1016,7 +1054,7 @@
 
       row.append(meta, bubble);
 
-      if (message.type === "user" && message.turnId) {
+      if (["user", "staff"].includes(message.type) && message.turnId) {
         const actions = document.createElement("div");
         actions.className = "message-actions";
         [
@@ -1198,16 +1236,17 @@
       [
         ["client", "Client"],
         ["bot", "Bot"],
+        ["staff", "Staff"],
       ].forEach(function (roleOption) {
         const option = document.createElement("option");
         option.value = roleOption[0];
         option.textContent = roleOption[1];
         roleSelect.appendChild(option);
       });
-      roleSelect.value = message.role === "bot" ? "bot" : "client";
+      roleSelect.value = ["bot", "staff"].includes(message.role) ? message.role : "client";
       roleSelect.disabled = isReplayLocked();
       roleSelect.addEventListener("change", function (event) {
-        state.importedMessages[index].role = event.target.value === "bot" ? "bot" : "client";
+        state.importedMessages[index].role = ["bot", "staff"].includes(event.target.value) ? event.target.value : "client";
         clearReplayResults();
         renderConversationPreview();
         updateReplayControls();
@@ -1241,7 +1280,7 @@
       editor.rows = Math.max(2, Math.min(7, String(message.text).split("\n").length + 1));
       editor.value = message.text;
       editor.disabled = isReplayLocked();
-      editor.setAttribute("aria-label", "Edit parsed " + (message.role === "bot" ? "bot" : "client") + " message " + (index + 1));
+      editor.setAttribute("aria-label", "Edit parsed " + (message.role === "bot" ? "bot" : message.role === "staff" ? "staff" : "client") + " message " + (index + 1));
       editor.addEventListener("input", function (event) {
         state.importedMessages[index].text = event.target.value;
         clearReplayResults();
@@ -1646,6 +1685,16 @@
     elements.debugIntent.textContent = formatDebugValue(debug.intent);
     elements.debugStep.textContent = formatDebugValue(debug.step);
     elements.debugModel.textContent = formatDebugValue(debug.model);
+    if (elements.debugHumanTakeover) {
+      const takeover = debug.humanTakeover;
+      elements.debugHumanTakeover.textContent = takeover && takeover.active ? "ACTIVE" : "INACTIVE";
+      elements.debugHumanTakeover.className = "takeover-status " + (takeover && takeover.active ? "active" : "inactive");
+      if (takeover && takeover.active && takeover.freezeUntil) {
+        elements.debugHumanTakeover.title = "Frozen until " + takeover.freezeUntil;
+      } else {
+        elements.debugHumanTakeover.removeAttribute("title");
+      }
+    }
     elements.requestJson.textContent = formatDebugValue(data.request, "Chưa có request");
     elements.debugFields.textContent = formatDebugValue(debug.fields, "Chưa có extracted fields");
     elements.rawResponse.textContent = formatDebugValue(data.response, "Chưa có response");
@@ -1703,6 +1752,10 @@
     const bot = state.selectedBot;
 
     const isReplayRequest = Boolean(sendOptions && sendOptions.replay === true);
+    const requestedSenderMode = (sendOptions && sendOptions.senderMode) || state.senderMode;
+    const isStaffRequest = state.channelMode === "messenger" && requestedSenderMode === "staff" &&
+      !isReplayRequest && !(sendOptions && sendOptions.simulator) && !(sendOptions && sendOptions.scenarioId);
+    const senderMode = isStaffRequest ? "staff" : "client";
     if (!message || isRequestBlocked(sendOptions)) {
       return null;
     }
@@ -1720,6 +1773,7 @@
         : null;
     const requestContext = {
       channelMode: state.channelMode,
+      senderMode: senderMode,
       selectedOption: sendOptions && sendOptions.selectedOption,
       edgeTestMode: state.edgeTestMode,
       requestId: requestId,
@@ -1731,8 +1785,10 @@
         ? "simulator"
         : sendOptions && sendOptions.scenarioId
           ? "scenario"
-          : "manual";
-    const turn = createTurn(bot, message, messageLabel, requestPayload, adapter, runType);
+          : isStaffRequest
+            ? "manual-staff"
+            : "manual-client";
+    const turn = createTurn(bot, message, messageLabel, requestPayload, adapter, runType, senderMode);
     if (isReplayRequest && sendOptions.replaySourceIndex !== undefined) {
       turn.importedSourceIndex = sendOptions.replaySourceIndex;
     }
@@ -1748,7 +1804,7 @@
     let failureType = "connection";
 
     clearSuggestedOptions();
-    addMessage("user", messageLabel, [], turn.id);
+    addMessage(isStaffRequest ? "staff" : "user", messageLabel, [], turn.id);
     elements.messageInput.value = "";
     updateTurn(turn, {
       message: message,
@@ -1764,11 +1820,13 @@
     setLoading(true);
 
     try {
-      const apiUrl = getBotApiUrl(bot);
+      const apiUrl = isStaffRequest ? getStaffApiUrl(bot) : getBotApiUrl(bot);
 
       if (!apiUrl) {
         failureType = "configuration";
-        throw new Error("API URL chưa cấu hình trong config.js.");
+        throw new Error(isStaffRequest
+          ? "Staff test API URL chưa cấu hình trong config.js."
+          : "API URL chưa cấu hình trong config.js.");
       }
 
       if (controller) {
@@ -1788,8 +1846,22 @@
       }
 
       failureType = "response";
-      parsedReply = adapter.parseResponse(bot, rawResponse);
-      addMessage("bot", parsedReply, adapter.parseSuggestedOptions(bot, rawResponse, requestContext), turn.id);
+      if (isStaffRequest) {
+        parsedReply = null;
+      } else if (rawResponse && rawResponse.type === "silent") {
+        parsedReply = null;
+        addMessage(
+          "system",
+          normalizedDebug.humanTakeover && normalizedDebug.humanTakeover.active
+            ? "Bot reply suppressed — Human Takeover is active."
+            : "Bot returned no message.",
+          [],
+          turn.id,
+        );
+      } else {
+        parsedReply = adapter.parseResponse(bot, rawResponse);
+        addMessage("bot", parsedReply, adapter.parseSuggestedOptions(bot, rawResponse, requestContext), turn.id);
+      }
     } catch (error) {
       errorMessage = formatRequestError(error, failureType, status, timeoutMs);
       addMessage("error", errorMessage, [], turn.id);
@@ -2976,6 +3048,7 @@
     clearSuggestedOptions();
     renderMessages();
     updateBotDisplay();
+    updateLoadingControls();
     updateScenarioControls();
     if (state.selectedTurnId) {
       updateDebug(getTurn(state.selectedTurnId));
@@ -2987,9 +3060,20 @@
     elements.channelMode.addEventListener("change", function (event) {
       invalidateScenarioEvaluation();
       state.channelMode = event.target.value === "messenger" ? "messenger" : "website";
+      if (state.channelMode !== "messenger") state.senderMode = "client";
       clearSuggestedOptions();
       renderMessages();
       updateChannelDisplay();
+    });
+  }
+  if (elements.senderModeInputs) {
+    elements.senderModeInputs.forEach(function (input) {
+      input.addEventListener("change", function (event) {
+        if (state.channelMode !== "messenger" || isRequestBlocked()) return;
+        state.senderMode = event.target.value === "staff" ? "staff" : "client";
+        updateChannelDisplay();
+        updateLoadingControls();
+      });
     });
   }
   if (elements.edgeTestMode) {
