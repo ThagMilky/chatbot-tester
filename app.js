@@ -484,6 +484,10 @@
     return isReplayLocked() || isSimulatorLocked() || (state.isSending && !state.edgeTestMode);
   }
 
+  function isManualSenderLocked() {
+    return isReplayLocked() || isSimulatorLocked();
+  }
+
   function isRequestBlocked(sendOptions) {
     const isReplayRequest = Boolean(sendOptions && sendOptions.replay === true);
     const isSimulatorRequest = Boolean(sendOptions && sendOptions.simulator === true);
@@ -636,7 +640,7 @@
     } else if (!["client", "staff"].includes(state.senderMode)) {
       state.senderMode = "client";
     }
-    const senderModeLocked = !isMessenger || isManualChatLocked();
+    const senderModeLocked = !isMessenger || isManualSenderLocked();
     if (elements.channelMode) {
       elements.channelMode.value = state.channelMode;
     }
@@ -3085,7 +3089,7 @@
   if (elements.senderModeInputs) {
     elements.senderModeInputs.forEach(function (input) {
       input.addEventListener("change", function (event) {
-        if (state.channelMode !== "messenger" || isManualChatLocked()) return;
+        if (state.channelMode !== "messenger" || isManualSenderLocked()) return;
         state.senderMode = event.target.value === "staff" ? "staff" : "client";
         updateLoadingControls();
       });
