@@ -263,6 +263,7 @@
   const elements = {
     workspaceTabs: Array.prototype.slice.call(document.querySelectorAll(".workspace-tab")),
     workspacePanels: Array.prototype.slice.call(document.querySelectorAll(".workspace-panel")),
+    globalControls: document.getElementById("global-controls"),
     themeToggle: document.getElementById("theme-toggle"),
     headerBotContext: document.getElementById("header-bot-context"),
     headerStatusContext: document.getElementById("header-status-context"),
@@ -377,6 +378,24 @@
     elements.workspacePanels.forEach(function (panel) {
       panel.hidden = panel.id !== panelId;
     });
+    updateToolbarVisibility(tabId);
+  }
+
+  function updateToolbarVisibility(tabId) {
+    const workspace = String(tabId || "").replace(/^tab-/, "");
+    const isChat = workspace === "chat";
+    const isSimulator = workspace === "simulator";
+    const toolbar = elements.globalControls;
+    if (!toolbar) return;
+
+    toolbar.dataset.activeWorkspace = workspace;
+    toolbar.querySelectorAll("[data-toolbar-control]").forEach(function (control) {
+      const name = control.dataset.toolbarControl;
+      const visible = name === "bot" || ((isChat || isSimulator) && ["channel", "session", "actions"].includes(name)) ||
+        (isChat && ["test-mode", "edge-mode"].includes(name));
+      control.hidden = !visible;
+    });
+    if (elements.clearChat) elements.clearChat.hidden = !isChat;
   }
 
   function organizeWorkspacePanels() {
@@ -398,6 +417,17 @@
         }
       });
     }
+
+    [
+      ["bot", elements.botSelect && elements.botSelect.closest(".field-group")],
+      ["channel", elements.channelMode && elements.channelMode.closest(".field-group")],
+      ["session", elements.sessionId && elements.sessionId.closest(".field-group")],
+      ["test-mode", document.getElementById("test-mode-card")],
+      ["edge-mode", elements.edgeTestMode && elements.edgeTestMode.closest(".edge-test-card")],
+      ["actions", elements.newConversation && elements.newConversation.closest(".control-actions")],
+    ].forEach(function (entry) {
+      if (entry[1]) entry[1].dataset.toolbarControl = entry[0];
+    });
 
     Object.keys(panelMap).forEach(function (sourceId) {
       const source = document.getElementById(sourceId);

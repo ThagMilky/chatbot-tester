@@ -26,37 +26,37 @@
     <div class="app-shell">
       <div class="app-main">
         <header class="topbar">
-          <div class="topbar-brand">
-            <div class="brand-mark" aria-hidden="true">Q</div>
-            <div>
-              <p class="eyebrow">LOCAL QA TOOL</p>
-              <h1>Chatbot Tester</h1>
-              <p class="subtitle">Chat UI và backend debug cho nhiều chatbot.</p>
+          <div class="topbar-primary">
+            <div class="topbar-brand">
+              <div class="brand-mark" aria-hidden="true">Q</div>
+              <div>
+                <h1>Chatbot Tester</h1>
+              </div>
+            </div>
+
+            <nav class="tab-navigation" role="tablist" aria-label="QA workspaces">
+              <button id="tab-chat" class="workspace-tab" type="button" role="tab" aria-controls="panel-chat" aria-selected="true">Chat</button>
+              <button id="tab-simulator" class="workspace-tab" type="button" role="tab" aria-controls="panel-simulator" aria-selected="false" tabindex="-1">AI Simulator</button>
+              <button id="tab-replay" class="workspace-tab" type="button" role="tab" aria-controls="panel-replay" aria-selected="false" tabindex="-1">Replay</button>
+              <button id="tab-regression" class="workspace-tab" type="button" role="tab" aria-controls="panel-regression" aria-selected="false" tabindex="-1">Regression</button>
+              <button id="tab-scenarios" class="workspace-tab" type="button" role="tab" aria-controls="panel-scenarios" aria-selected="false" tabindex="-1">Scenarios</button>
+              <button id="tab-debug" class="workspace-tab" type="button" role="tab" aria-controls="panel-debug" aria-selected="false" tabindex="-1">Debug</button>
+            </nav>
+
+            <div class="topbar-context" aria-live="polite">
+              <strong id="header-bot-context">Not configured</strong>
+              <span id="header-status-context" class="status-pill pending">Not configured</span>
+            </div>
+            <div class="topbar-actions">
+              <span class="local-badge">localhost</span>
+              <button id="theme-toggle" class="icon-button theme-button" type="button" aria-label="Switch to dark theme" aria-pressed="false">
+                <span class="theme-icon-sun" aria-hidden="true">☼</span>
+                <span class="theme-icon-moon" aria-hidden="true">◐</span>
+              </button>
             </div>
           </div>
-          <div id="global-controls" class="global-controls" aria-label="Global chat settings"></div>
-          <div class="topbar-context" aria-live="polite">
-            <span class="context-label">Selected bot</span>
-            <strong id="header-bot-context">Not configured</strong>
-            <span id="header-status-context" class="status-pill pending">Not configured</span>
-          </div>
-          <div class="topbar-actions">
-            <span class="local-badge">localhost</span>
-            <button id="theme-toggle" class="icon-button theme-button" type="button" aria-label="Switch to dark theme" aria-pressed="false">
-              <span class="theme-icon-sun" aria-hidden="true">☼</span>
-              <span class="theme-icon-moon" aria-hidden="true">◐</span>
-            </button>
-          </div>
         </header>
-
-        <nav class="tab-navigation" role="tablist" aria-label="QA workspaces">
-          <button id="tab-chat" class="workspace-tab" type="button" role="tab" aria-controls="panel-chat" aria-selected="true">Chat</button>
-          <button id="tab-simulator" class="workspace-tab" type="button" role="tab" aria-controls="panel-simulator" aria-selected="false" tabindex="-1">AI Simulator</button>
-          <button id="tab-replay" class="workspace-tab" type="button" role="tab" aria-controls="panel-replay" aria-selected="false" tabindex="-1">Replay</button>
-          <button id="tab-regression" class="workspace-tab" type="button" role="tab" aria-controls="panel-regression" aria-selected="false" tabindex="-1">Regression</button>
-          <button id="tab-scenarios" class="workspace-tab" type="button" role="tab" aria-controls="panel-scenarios" aria-selected="false" tabindex="-1">Scenarios</button>
-          <button id="tab-debug" class="workspace-tab" type="button" role="tab" aria-controls="panel-debug" aria-selected="false" tabindex="-1">Debug</button>
-        </nav>
+        <section id="global-controls" class="global-controls workspace-toolbar" aria-label="Global chat settings"></section>
 
         <main class="workspace tab-workspaces">
           <section id="panel-chat" class="workspace-panel" role="tabpanel" aria-labelledby="tab-chat"></section>
