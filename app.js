@@ -480,6 +480,10 @@
     return Boolean(state.simulator && ["running", "paused"].includes(state.simulator.status));
   }
 
+  function isManualChatLocked() {
+    return isReplayLocked() || isSimulatorLocked() || (state.isSending && !state.edgeTestMode);
+  }
+
   function isRequestBlocked(sendOptions) {
     const isReplayRequest = Boolean(sendOptions && sendOptions.replay === true);
     const isSimulatorRequest = Boolean(sendOptions && sendOptions.simulator === true);
@@ -632,7 +636,7 @@
     } else if (!["client", "staff"].includes(state.senderMode)) {
       state.senderMode = "client";
     }
-    const senderModeLocked = !isMessenger || isRequestBlocked();
+    const senderModeLocked = !isMessenger || isManualChatLocked();
     if (elements.channelMode) {
       elements.channelMode.value = state.channelMode;
     }
@@ -734,7 +738,7 @@
 
   function updateLoadingControls() {
     const simulatorLocked = isSimulatorLocked();
-    const lockInput = isReplayLocked() || simulatorLocked || (state.isSending && !state.edgeTestMode);
+    const lockInput = isManualChatLocked();
     elements.sendButton.disabled = lockInput || !getBotApiUrl(state.selectedBot);
     if (state.channelMode === "messenger" && state.senderMode === "staff") {
       elements.sendButton.disabled = lockInput || !getStaffApiUrl(state.selectedBot);
@@ -3081,7 +3085,7 @@
   if (elements.senderModeInputs) {
     elements.senderModeInputs.forEach(function (input) {
       input.addEventListener("change", function (event) {
-        if (state.channelMode !== "messenger" || isRequestBlocked()) return;
+        if (state.channelMode !== "messenger" || isManualChatLocked()) return;
         state.senderMode = event.target.value === "staff" ? "staff" : "client";
         updateLoadingControls();
       });
