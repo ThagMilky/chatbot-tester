@@ -289,6 +289,15 @@
     scenarioResult: document.getElementById("scenario-result"),
     aiBehaviorResult: document.getElementById("ai-behavior-result"),
     reevaluateBehavior: document.getElementById("reevaluate-behavior"),
+    simulatorService: document.getElementById("simulator-service"),
+    simulatorScenario: document.getElementById("simulator-scenario"),
+    simulatorDifficulty: document.getElementById("simulator-difficulty"),
+    simulatorMaxTurns: document.getElementById("simulator-max-turns"),
+    startSimulator: document.getElementById("start-simulator"),
+    pauseSimulator: document.getElementById("pause-simulator"),
+    stopSimulator: document.getElementById("stop-simulator"),
+    simulatorStatus: document.getElementById("simulator-status"),
+    simulatorSummary: document.getElementById("simulator-summary"),
     exportFormat: document.getElementById("export-format"),
     exportQa: document.getElementById("export-qa"),
     conversationInput: document.getElementById("conversation-input"),
@@ -397,6 +406,22 @@
       locked: false,
       runToken: null,
     },
+    simulator: {
+      catalog: [],
+      catalogLoading: true,
+      catalogError: false,
+      serviceId: null,
+      scenarioId: null,
+      difficulty: "normal",
+      status: "idle",
+      current: 0,
+      total: 0,
+      summary: "",
+      reason: "",
+      requestInFlight: false,
+      stopRequested: false,
+      runToken: null,
+    },
     toastTimer: null,
   };
 
@@ -440,19 +465,28 @@
     ));
   }
 
+  function isSimulatorLocked() {
+    return Boolean(state.simulator && ["running", "paused"].includes(state.simulator.status));
+  }
+
   function isRequestBlocked(sendOptions) {
     const isReplayRequest = Boolean(sendOptions && sendOptions.replay === true);
+    const isSimulatorRequest = Boolean(sendOptions && sendOptions.simulator === true);
     const replayLocked = isReplayLocked();
+    const simulatorLocked = isSimulatorLocked();
+    let blockedByReplayOrSending;
     if (window.ReplayHelpers && typeof window.ReplayHelpers.isSendBlocked === "function") {
-      return window.ReplayHelpers.isSendBlocked({
+      blockedByReplayOrSending = window.ReplayHelpers.isSendBlocked({
         replayLocked: replayLocked,
         isReplayRequest: isReplayRequest,
         isSending: state.isSending,
         edgeTestMode: state.edgeTestMode,
       });
+    } else {
+      blockedByReplayOrSending = (replayLocked && !isReplayRequest) || (state.isSending && !state.edgeTestMode);
     }
 
-    return (replayLocked && !isReplayRequest) || (state.isSending && !state.edgeTestMode);
+    return blockedByReplayOrSending || (simulatorLocked && !isSimulatorRequest);
   }
 
   function getBotApiUrl(bot) {
@@ -666,14 +700,15 @@
   }
 
   function updateLoadingControls() {
-    const lockInput = isReplayLocked() || (state.isSending && !state.edgeTestMode);
+    const simulatorLocked = isSimulatorLocked();
+    const lockInput = isReplayLocked() || simulatorLocked || (state.isSending && !state.edgeTestMode);
     elements.sendButton.disabled = lockInput || !getBotApiUrl(state.selectedBot);
     elements.messageInput.disabled = lockInput;
-    elements.botSelect.disabled = state.isSending || isReplayLocked() || !state.bots.length;
-    elements.newConversation.disabled = state.isSending || isReplayLocked();
-    elements.clearChat.disabled = state.isSending || isReplayLocked();
-    if (elements.channelMode) elements.channelMode.disabled = state.isSending || isReplayLocked();
-    if (elements.edgeTestMode) elements.edgeTestMode.disabled = state.isSending || isReplayLocked();
+    elements.botSelect.disabled = state.isSending || isReplayLocked() || simulatorLocked || !state.bots.length;
+    elements.newConversation.disabled = state.isSending || isReplayLocked() || simulatorLocked;
+    elements.clearChat.disabled = state.isSending || isReplayLocked() || simulatorLocked;
+    if (elements.channelMode) elements.channelMode.disabled = state.isSending || isReplayLocked() || simulatorLocked;
+    if (elements.edgeTestMode) elements.edgeTestMode.disabled = state.isSending || isReplayLocked() || simulatorLocked;
     elements.sendButton.classList.toggle("loading", state.isSending);
     elements.sendLabel.textContent = state.isSending
       ? state.edgeTestMode && state.activeRequestCount > 1
@@ -691,6 +726,7 @@
     updateChannelDisplay();
     updateScenarioControls();
     updateReplayControls();
+    updateSimulatorControls();
   }
 
   function setLoading(isLoading) {
@@ -1271,7 +1307,7 @@
   function updateReplayControls() {
     const replay = state.replay;
     const hasPlan = replay.plan.length > 0;
-    const canStart = !state.isSending && !isReplayLocked();
+    const canStart = !state.isSending && !isReplayLocked() && !isSimulatorLocked();
     const canPause = replay.status === "running" || replay.status === "paused";
 
     if (elements.runReplay) {
@@ -1288,7 +1324,7 @@
     if (elements.retryReplay) {
       elements.retryReplay.disabled = replay.status !== "failed" || replay.failedIndex === null;
     }
-    if (elements.scanConversation) elements.scanConversation.disabled = state.isSending || isReplayLocked();
+    if (elements.scanConversation) elements.scanConversation.disabled = state.isSending || isReplayLocked() || isSimulatorLocked();
     if (elements.conversationInput) elements.conversationInput.disabled = isReplayLocked();
     if (elements.importBotNames) elements.importBotNames.disabled = isReplayLocked();
     renderReplayStatus();
@@ -1381,7 +1417,7 @@
   }
 
   function runReplay() {
-    if (state.isSending || isReplayLocked() || state.scenario.running) return;
+    if (state.isSending || isReplayLocked() || isSimulatorLocked() || state.scenario.running) return;
     if (!window.ReplayHelpers) {
       showToast("Replay helpers are not available.");
       return;
@@ -1443,6 +1479,7 @@
 
   async function retryFailedReplayTurn() {
     const replay = state.replay;
+    if (isSimulatorLocked()) return;
     const index = replay.failedIndex;
     if (replay.status !== "failed" || index === null || !replay.plan[index]) return;
 
@@ -1688,7 +1725,13 @@
       requestId: requestId,
     };
     const requestPayload = adapter.buildRequest(bot, message, state.sessionId, requestContext);
-    const runType = isReplayRequest ? "replay" : sendOptions && sendOptions.scenarioId ? "scenario" : "manual";
+    const runType = isReplayRequest
+      ? "replay"
+      : sendOptions && sendOptions.simulator
+        ? "simulator"
+        : sendOptions && sendOptions.scenarioId
+          ? "scenario"
+          : "manual";
     const turn = createTurn(bot, message, messageLabel, requestPayload, adapter, runType);
     if (isReplayRequest && sendOptions.replaySourceIndex !== undefined) {
       turn.importedSourceIndex = sendOptions.replaySourceIndex;
@@ -1771,6 +1814,333 @@
     }
 
     return turn;
+  }
+
+  function getSelectedSimulatorScenario() {
+    return state.simulator.catalog.find(function (scenario) {
+      return scenario.serviceId === state.simulator.serviceId && scenario.scenarioId === state.simulator.scenarioId;
+    }) || null;
+  }
+
+  function populateSimulatorSelectors() {
+    if (!elements.simulatorService || !elements.simulatorScenario) return;
+    const catalog = state.simulator.catalog;
+    const previousServiceId = state.simulator.serviceId;
+    const previousScenarioId = state.simulator.scenarioId;
+    const services = [];
+    catalog.forEach(function (scenario) {
+      if (!services.some(function (service) { return service.id === scenario.serviceId; })) {
+        services.push({ id: scenario.serviceId, name: scenario.serviceName });
+      }
+    });
+
+    elements.simulatorService.replaceChildren();
+    if (!services.length) {
+      const emptyService = document.createElement("option");
+      emptyService.value = "";
+      emptyService.textContent = state.simulator.catalogError ? "Simulator unavailable" : "Loading services...";
+      elements.simulatorService.appendChild(emptyService);
+      elements.simulatorService.disabled = true;
+      elements.simulatorScenario.replaceChildren();
+      const emptyScenario = document.createElement("option");
+      emptyScenario.value = "";
+      emptyScenario.textContent = state.simulator.catalogError ? "Simulator unavailable" : "Loading scenarios...";
+      elements.simulatorScenario.appendChild(emptyScenario);
+      elements.simulatorScenario.disabled = true;
+      return;
+    }
+
+    state.simulator.serviceId = services.some(function (service) { return service.id === previousServiceId; })
+      ? previousServiceId
+      : services[0].id;
+    services.forEach(function (service) {
+      const option = document.createElement("option");
+      option.value = service.id;
+      option.textContent = service.name;
+      elements.simulatorService.appendChild(option);
+    });
+    elements.simulatorService.value = state.simulator.serviceId;
+
+    const scenarios = catalog.filter(function (scenario) {
+      return scenario.serviceId === state.simulator.serviceId;
+    });
+    state.simulator.scenarioId = scenarios.some(function (scenario) { return scenario.scenarioId === previousScenarioId; })
+      ? previousScenarioId
+      : scenarios[0].scenarioId;
+    elements.simulatorScenario.replaceChildren();
+    scenarios.forEach(function (scenario) {
+      const option = document.createElement("option");
+      option.value = scenario.scenarioId;
+      option.textContent = scenario.scenarioName;
+      elements.simulatorScenario.appendChild(option);
+    });
+    elements.simulatorScenario.value = state.simulator.scenarioId;
+  }
+
+  function renderSimulatorStatus() {
+    if (!elements.simulatorStatus || !elements.simulatorSummary) return;
+    const simulator = state.simulator;
+    let statusText = "Not run";
+    if (simulator.catalogLoading) {
+      statusText = "Loading scenarios...";
+    } else if (simulator.catalogError && simulator.status === "idle") {
+      statusText = "Unavailable";
+    } else if (simulator.status === "running") {
+      statusText = "Running " + simulator.current + "/" + simulator.total;
+    } else if (simulator.status === "paused") {
+      statusText = "Paused after " + simulator.current + "/" + simulator.total;
+    } else if (simulator.status === "completed") {
+      statusText = "Completed after " + simulator.current + " client " + (simulator.current === 1 ? "turn" : "turns");
+    } else if (simulator.status === "max-turns") {
+      statusText = "Max turns reached " + simulator.current + "/" + simulator.total;
+    } else if (simulator.status === "stopped") {
+      statusText = "Stopped after " + simulator.current + "/" + simulator.total;
+    } else if (simulator.status === "error") {
+      statusText = "Error after " + simulator.current + "/" + simulator.total;
+    }
+    elements.simulatorStatus.textContent = statusText;
+    const summary = simulator.summary || (simulator.catalogError
+      ? "AI Client Simulator is unavailable. Manual chat and existing QA tools remain available."
+      : "Not run");
+    const summaryClass = simulator.catalogError && simulator.status === "idle" ? "unavailable" : simulator.status;
+    elements.simulatorSummary.className = "simulator-summary status-" + summaryClass;
+    elements.simulatorSummary.textContent = summary;
+  }
+
+  function updateSimulatorControls() {
+    if (!elements.startSimulator) return;
+    const simulator = state.simulator;
+    const locked = isSimulatorLocked();
+    const canStart = !state.isSending && !isReplayLocked() && !locked && simulator.catalog.length > 0 && !simulator.catalogError;
+    elements.startSimulator.disabled = !canStart;
+    elements.pauseSimulator.disabled = !locked || (simulator.status === "paused" && simulator.requestInFlight);
+    elements.pauseSimulator.textContent = simulator.status === "paused" ? "Resume" : "Pause";
+    elements.stopSimulator.disabled = !locked;
+    const controlsLocked = state.isSending || isReplayLocked() || locked;
+    elements.simulatorService.disabled = controlsLocked || simulator.catalog.length === 0;
+    elements.simulatorScenario.disabled = controlsLocked || simulator.catalog.length === 0;
+    elements.simulatorDifficulty.disabled = controlsLocked;
+    elements.simulatorMaxTurns.disabled = controlsLocked;
+    renderSimulatorStatus();
+  }
+
+  function getSimulatorMaxTurns() {
+    const value = Number(elements.simulatorMaxTurns && elements.simulatorMaxTurns.value);
+    if (Number.isSafeInteger(value) && value >= 1 && value <= 20) return value;
+    if (elements.simulatorMaxTurns) elements.simulatorMaxTurns.value = "8";
+    return 8;
+  }
+
+  function getVisibleSimulatorConversation() {
+    return state.messages
+      .filter(function (message) { return message.type === "user" || message.type === "bot"; })
+      .map(function (message) {
+        return {
+          role: message.type === "user" ? "client" : "bot",
+          text: String(message.text),
+        };
+      });
+  }
+
+  function parseSimulatorDecision(body) {
+    if (!isObject(body) || !["message", "stop"].includes(body.action)) {
+      throw new Error("Simulator response was invalid.");
+    }
+    const message = typeof body.message === "string" ? body.message.trim() : "";
+    const reason = typeof body.reason === "string" ? body.reason.trim() : "";
+    if (body.action === "message" && !message) throw new Error("Simulator response did not include a client message.");
+    if (!reason) throw new Error("Simulator response did not include a reason.");
+    return {
+      action: body.action,
+      message: body.action === "stop" ? "" : message,
+      reason: reason,
+    };
+  }
+
+  async function requestSimulatorTurn(run) {
+    const response = await fetch("/api/simulate-client-turn", {
+      method: "POST",
+      headers: { Accept: "application/json", "Content-Type": "application/json" },
+      body: JSON.stringify({
+        serviceId: run.serviceId,
+        scenarioId: run.scenarioId,
+        difficulty: run.difficulty,
+        turnNumber: run.current,
+        maxTurns: run.total,
+        messages: getVisibleSimulatorConversation(),
+      }),
+    });
+    const body = parseJsonOrText(await response.text());
+    if (!response.ok) {
+      const error = new Error(body && typeof body.error === "string" ? body.error : "AI Client Simulator request failed.");
+      error.status = response.status;
+      error.unavailable = Boolean(body && body.status === "unavailable");
+      throw error;
+    }
+    return parseSimulatorDecision(body);
+  }
+
+  function isCurrentSimulatorToken(token) {
+    return state.simulator.runToken === token;
+  }
+
+  function finishSimulator(token, status, summary, reason) {
+    if (!isCurrentSimulatorToken(token)) return;
+    const simulator = state.simulator;
+    simulator.status = status;
+    simulator.requestInFlight = false;
+    simulator.summary = summary;
+    simulator.reason = reason || "";
+    updateLoadingControls();
+    renderMessages(false);
+    showToast(summary);
+  }
+
+  async function runSimulatorLoop(token, run) {
+    while (isCurrentSimulatorToken(token)) {
+      if (run.stopRequested || run.status === "stopped") return;
+      if (run.status === "paused") {
+        updateSimulatorControls();
+        return;
+      }
+      if (run.current >= run.total) {
+        finishSimulator(token, "max-turns", "Reached the max of " + run.total + " client turns. The conversation remains available for inspection.");
+        return;
+      }
+
+      run.requestInFlight = true;
+      updateSimulatorControls();
+      let decision;
+      try {
+        decision = await requestSimulatorTurn(run);
+      } catch (error) {
+        run.requestInFlight = false;
+        if (!isCurrentSimulatorToken(token) || run.stopRequested || run.status === "stopped") return;
+        finishSimulator(
+          token,
+          error && error.unavailable ? "unavailable" : "error",
+          error && error.unavailable
+            ? "AI Client Simulator is unavailable. Manual chat and existing QA tools remain available."
+            : "AI Client Simulator stopped after an error. Inspect the local server configuration and status.",
+        );
+        return;
+      }
+      run.requestInFlight = false;
+      if (!isCurrentSimulatorToken(token) || run.stopRequested || run.status === "stopped") return;
+      if (run.status === "paused") {
+        updateSimulatorControls();
+        return;
+      }
+      if (decision.action === "stop") {
+        finishSimulator(
+          token,
+          "completed",
+          "Client chose to stop after " + run.current + " client " + (run.current === 1 ? "turn" : "turns") + "." + (decision.reason ? " " + decision.reason : ""),
+          decision.reason,
+        );
+        return;
+      }
+
+      run.current += 1;
+      run.requestInFlight = true;
+      updateSimulatorControls();
+      let turn;
+      try {
+        turn = await sendMessage(decision.message, decision.message, {
+          simulator: true,
+          simulatorScenarioId: run.scenarioId,
+        });
+      } catch (error) {
+        run.requestInFlight = false;
+        if (!isCurrentSimulatorToken(token) || run.stopRequested || run.status === "stopped") return;
+        finishSimulator(token, "error", "AI Client Simulator stopped because the chatbot request failed. Inspect the Turn Log.");
+        return;
+      }
+      run.requestInFlight = false;
+      if (!isCurrentSimulatorToken(token) || run.stopRequested || run.status === "stopped") return;
+      if (!turn || turn.error || typeof turn.reply !== "string") {
+        finishSimulator(token, "error", "AI Client Simulator stopped because the chatbot request failed. Inspect the Turn Log.");
+        return;
+      }
+      updateSimulatorControls();
+    }
+  }
+
+  function startSimulator() {
+    if (state.isSending || isReplayLocked() || isSimulatorLocked()) return;
+    const scenario = getSelectedSimulatorScenario();
+    if (!scenario) {
+      showToast("Select an available AI Client Simulator scenario first.");
+      return;
+    }
+    const run = Object.assign({}, state.simulator, {
+      serviceId: scenario.serviceId,
+      scenarioId: scenario.scenarioId,
+      difficulty: elements.simulatorDifficulty.value === "challenging" ? "challenging" : "normal",
+      status: "running",
+      current: 0,
+      total: getSimulatorMaxTurns(),
+      summary: "Starting a fresh tester conversation...",
+      reason: "",
+      requestInFlight: false,
+      stopRequested: false,
+      runToken: {},
+    });
+    state.simulator = run;
+    state.scenario.result = null;
+    state.scenario.evaluationInput = null;
+    state.scenario.behaviorEvaluation = null;
+    resetConversationData();
+    updateLoadingControls();
+    showToast("AI Client Simulator started with a fresh session.");
+    void runSimulatorLoop(run.runToken, run);
+  }
+
+  function pauseOrResumeSimulator() {
+    const simulator = state.simulator;
+    if (simulator.status === "running") {
+      simulator.status = "paused";
+      simulator.summary = "Paused after " + simulator.current + "/" + simulator.total + " client turns.";
+      updateSimulatorControls();
+      showToast("AI Client Simulator paused.");
+      return;
+    }
+    if (simulator.status === "paused" && !simulator.requestInFlight) {
+      simulator.status = "running";
+      simulator.summary = "Resuming the client conversation...";
+      updateSimulatorControls();
+      void runSimulatorLoop(simulator.runToken, simulator);
+    }
+  }
+
+  function stopSimulator() {
+    const simulator = state.simulator;
+    if (!isSimulatorLocked()) return;
+    simulator.stopRequested = true;
+    simulator.status = "stopped";
+    simulator.runToken = {};
+    simulator.summary = "Stopped by the user after " + simulator.current + "/" + simulator.total + " client turns. The conversation remains available.";
+    updateLoadingControls();
+    showToast("AI Client Simulator stopped.");
+  }
+
+  async function loadSimulatorCatalog() {
+    try {
+      const response = await fetch("/api/simulate-client-scenarios", { headers: { Accept: "application/json" } });
+      const body = parseJsonOrText(await response.text());
+      if (!response.ok || !body || !Array.isArray(body.scenarios)) throw new Error("Simulator catalog unavailable.");
+      state.simulator.catalog = body.scenarios.filter(function (scenario) {
+        return isObject(scenario) && scenario.serviceId && scenario.serviceName && scenario.scenarioId && scenario.scenarioName;
+      });
+      state.simulator.catalogError = false;
+    } catch (error) {
+      state.simulator.catalog = [];
+      state.simulator.catalogError = true;
+    } finally {
+      state.simulator.catalogLoading = false;
+      populateSimulatorSelectors();
+      updateSimulatorControls();
+    }
   }
 
   function getRegressionHelpers() {
@@ -2214,8 +2584,8 @@
         ? selectedId
         : scenarios[0].id;
       elements.scenarioSelect.value = state.scenario.scenarioId;
-      elements.scenarioSelect.disabled = state.scenario.running || state.isSending || isReplayLocked();
-      elements.runScenario.disabled = state.scenario.running || state.isSending || isReplayLocked();
+      elements.scenarioSelect.disabled = state.scenario.running || state.isSending || isReplayLocked() || isSimulatorLocked();
+      elements.runScenario.disabled = state.scenario.running || state.isSending || isReplayLocked() || isSimulatorLocked();
     }
 
     if (elements.scenarioProgress) {
@@ -2417,7 +2787,7 @@
   }
 
   async function runScenario() {
-    if (state.scenario.running || state.isSending || isReplayLocked()) return;
+    if (state.scenario.running || state.isSending || isReplayLocked() || isSimulatorLocked()) return;
     const scenario = getSelectedScenario();
     if (!scenario) {
       showToast("Chưa có scenario hợp lệ trong config.js.");
@@ -2559,7 +2929,7 @@
   }
 
   function startNewConversation() {
-    if (state.scenario.running || isReplayLocked()) return;
+    if (state.scenario.running || isReplayLocked() || isSimulatorLocked()) return;
     state.scenario = {
       running: false,
       scenarioId: state.scenario.scenarioId,
@@ -2578,7 +2948,7 @@
   }
 
   function clearChat() {
-    if (isReplayLocked()) return;
+    if (isReplayLocked() || isSimulatorLocked()) return;
     invalidateScenarioEvaluation();
     state.messages = [];
     renderMessages();
@@ -2659,6 +3029,36 @@
   }
   if (elements.reevaluateBehavior) {
     elements.reevaluateBehavior.addEventListener("click", reevaluateBehavior);
+  }
+  if (elements.simulatorService) {
+    elements.simulatorService.addEventListener("change", function (event) {
+      if (isSimulatorLocked()) return;
+      state.simulator.serviceId = event.target.value || null;
+      state.simulator.scenarioId = null;
+      populateSimulatorSelectors();
+      updateSimulatorControls();
+    });
+  }
+  if (elements.simulatorScenario) {
+    elements.simulatorScenario.addEventListener("change", function (event) {
+      if (isSimulatorLocked()) return;
+      state.simulator.scenarioId = event.target.value || null;
+      updateSimulatorControls();
+    });
+  }
+  if (elements.simulatorDifficulty) {
+    elements.simulatorDifficulty.addEventListener("change", function (event) {
+      state.simulator.difficulty = event.target.value === "challenging" ? "challenging" : "normal";
+    });
+  }
+  if (elements.startSimulator) {
+    elements.startSimulator.addEventListener("click", startSimulator);
+  }
+  if (elements.pauseSimulator) {
+    elements.pauseSimulator.addEventListener("click", pauseOrResumeSimulator);
+  }
+  if (elements.stopSimulator) {
+    elements.stopSimulator.addEventListener("click", stopSimulator);
   }
   if (elements.runReplay) {
     elements.runReplay.addEventListener("click", runReplay);
@@ -2743,7 +3143,9 @@
   renderMessages();
   renderConversationPreview();
   updateReplayControls();
+  updateSimulatorControls();
   resetDebug();
   renderRegressionDraft();
+  void loadSimulatorCatalog();
 })();
 

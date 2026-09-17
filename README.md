@@ -67,6 +67,26 @@ node server.js
 
 The API key is never sent to browser code, `config.js`, QA exports, logs, errors, or evaluator response data. Conversation text is treated as untrusted data and is not treated as instructions. If the evaluator is unconfigured, unavailable, times out, refuses, returns an HTTP error, or produces invalid output, the deterministic Scenario Runner remains usable and the AI Behavior panel reports unavailable or error without inventing a verdict. Do not place real keys in this repository or in exported files.
 
+## AI Client Simulator
+
+Start the local tester with `node server.js`, then open `http://127.0.0.1:8080` and configure the chatbot API as usual.
+
+The separate `AI Client Simulator` panel runs an exploratory conversation in a fresh tester session. Choose a service (`Website Design`, `ERP`, `CRM`, or `Custom Software`), a built-in client profile, `Normal` or `Challenging` difficulty, and a maximum number of client turns. `Start` asks the local tester server for the client's first message, sends it through the existing `sendMessage()` path, then sends only the visible client/bot transcript back for the next decision. The simulator chooses its own wording, question order, follow-ups, objections, and whether to stop; it is not a deterministic script and does not produce PASS/FAIL assertions.
+
+The built-in profiles live in `ai-client-simulator.js`. The local server exposes their public service/scenario catalog at `GET /api/simulate-client-scenarios` and the AI turn endpoint at `POST /api/simulate-client-turn`. Pause/Resume stops progress between sequential turns, and Stop invalidates the active run so stale responses cannot restart a stopped or newer run. Simulator turns are recorded in the existing Turn Log with `runType: "simulator"`; the completed conversation remains available for manual inspection, export, or regression drafting.
+
+The simulator uses the OpenAI Responses API server-side with strict structured JSON output. It requires the same server-side `OPENAI_API_KEY` as the evaluator and accepts optional simulator-specific overrides:
+
+```text
+OPENAI_API_KEY=...
+OPENAI_SIMULATOR_MODEL=gpt-5.6-luna
+OPENAI_SIMULATOR_REASONING=high
+OPENAI_SIMULATOR_TIMEOUT_MS=30000
+OPENAI_SIMULATOR_API_BASE_URL=https://api.openai.com/v1
+```
+
+If the key or simulator configuration is unavailable, the panel reports an unavailable/error state without breaking manual chat, replay, deterministic scenarios, or exports. The simulator receives no backend debug data, hidden chatbot state, Telegram payloads, API keys, expected answers, regression assertions, or evaluator internals. Bot replies are untrusted transcript data and cannot change the simulator's role or reveal its private profile.
+
 Pure validation, snapshot, storage, and serialization helpers live in `regression-helpers.js` and use only Node/browser built-ins. Focused and existing tests can be run with:
 
 ```bash

@@ -1155,6 +1155,62 @@ pre {
   color: var(--danger);
 }
 
+.ai-client-simulator {
+  border-color: #d7e5ff;
+}
+
+.simulator-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.simulator-form-grid input,
+.simulator-form-grid select {
+  width: 100%;
+}
+
+.simulator-action-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.simulator-action-row .primary-button,
+.simulator-action-row .secondary-button {
+  width: 100%;
+}
+
+.simulator-summary {
+  margin-top: 12px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--muted);
+  background: var(--page);
+  font-size: 0.72rem;
+  line-height: 1.45;
+}
+
+.simulator-summary.status-running,
+.simulator-summary.status-paused {
+  border-color: #cbd5ff;
+  color: #4351a8;
+}
+
+.simulator-summary.status-completed,
+.simulator-summary.status-max-turns {
+  border-color: #bdebd1;
+  color: #23644b;
+}
+
+.simulator-summary.status-stopped,
+.simulator-summary.status-error,
+.simulator-summary.status-unavailable {
+  border-color: #ffd1d7;
+  color: var(--danger);
+}
+
 .scenario-behavior-note {
   margin: 9px 0 0;
   color: var(--warning);
@@ -2388,7 +2444,12 @@ pre {
   }
 
   .replay-action-row,
-  .regression-action-row {
+  .regression-action-row,
+  .simulator-action-row {
+    grid-template-columns: 1fr;
+  }
+
+  .simulator-form-grid {
     grid-template-columns: 1fr;
   }
 

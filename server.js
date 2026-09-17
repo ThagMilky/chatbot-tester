@@ -8,11 +8,18 @@ const {
   validateAiEvaluationResult,
   validateEvaluationPayload,
 } = require("./ai-evaluator.js");
+const {
+  createAiClientSimulator,
+  getPublicSimulatorCatalog,
+  validateSimulatorTurnPayload,
+} = require("./ai-client-simulator.js");
 
 const HOST = "127.0.0.1";
 const PORT = Number(process.env.PORT) || 8080;
 const ROOT_DIR = __dirname;
 const EVALUATION_PATH = "/api/evaluate-behavior";
+const SIMULATOR_CATALOG_PATH = "/api/simulate-client-scenarios";
+const SIMULATOR_TURN_PATH = "/api/simulate-client-turn";
 const MAX_BODY_BYTES = 256 * 1024;
 
 const MIME_TYPES = {
@@ -146,6 +153,29 @@ function createSafeEvaluator(options) {
   }
 }
 
+function createUnavailableSimulator() {
+  return {
+    isConfigured: () => false,
+    async simulate() {
+      const error = new Error("AI client simulation is not configured.");
+      error.code = "SIM_UNCONFIGURED";
+      throw error;
+    },
+  };
+}
+
+function createSafeSimulator(options) {
+  if (options && options.simulator) return options.simulator;
+  try {
+    return createAiClientSimulator({
+      env: options && options.env ? options.env : process.env,
+      fetchImpl: options && options.fetchImpl,
+    });
+  } catch (error) {
+    return createUnavailableSimulator();
+  }
+}
+
 function createStaticHandler(options = {}) {
   const rootDir = options.rootDir || ROOT_DIR;
   return (request, response) => {
@@ -186,6 +216,7 @@ function createStaticHandler(options = {}) {
 
 function createHandler(options = {}) {
   const evaluator = createSafeEvaluator(options);
+  const simulator = createSafeSimulator(options);
   const maxBodyBytes = options.maxBodyBytes || MAX_BODY_BYTES;
   const staticHandler = createStaticHandler(options);
   return async (request, response) => {
@@ -196,25 +227,45 @@ function createHandler(options = {}) {
       sendText(response, 400, "Bad Request");
       return;
     }
-    if (pathname !== EVALUATION_PATH) {
+    const isEvaluationRequest = pathname === EVALUATION_PATH;
+    const isSimulatorCatalogRequest = pathname === SIMULATOR_CATALOG_PATH;
+    const isSimulatorTurnRequest = pathname === SIMULATOR_TURN_PATH;
+    const apiRequestLabel = isSimulatorCatalogRequest || isSimulatorTurnRequest ? "Simulator" : "Evaluation";
+    if (!isEvaluationRequest && !isSimulatorCatalogRequest && !isSimulatorTurnRequest) {
       staticHandler(request, response);
       return;
     }
     if (!isAllowedLocalHost(request.headers && request.headers.host)) {
-      sendJson(response, 403, { status: "error", error: "Evaluation request host is not allowed." });
+      sendJson(response, 403, { status: "error", error: apiRequestLabel + " request host is not allowed." });
       return;
     }
     if (!isAllowedOrigin(request.headers && request.headers.origin)) {
-      sendJson(response, 403, { status: "error", error: "Evaluation request origin is not allowed." });
+      sendJson(response, 403, { status: "error", error: apiRequestLabel + " request origin is not allowed." });
       return;
     }
+
+    if (isSimulatorCatalogRequest) {
+      if (request.method !== "GET") {
+        response.setHeader("Allow", "GET");
+        sendText(response, 405, "Method Not Allowed");
+        return;
+      }
+      sendJson(response, 200, { status: "ready", scenarios: getPublicSimulatorCatalog() });
+      return;
+    }
+
     if (request.method !== "POST") {
       response.setHeader("Allow", "POST");
       sendText(response, 405, "Method Not Allowed");
       return;
     }
     if (!hasJsonContentType(request.headers && request.headers["content-type"])) {
-      sendJson(response, 415, { status: "error", error: "Evaluation request must use application/json." });
+      sendJson(response, 415, {
+        status: "error",
+        error: isSimulatorTurnRequest
+          ? "Simulator request must use application/json."
+          : "Evaluation request must use application/json.",
+      });
       return;
     }
     let rawPayload;
@@ -222,24 +273,72 @@ function createHandler(options = {}) {
       rawPayload = await readJsonBody(request, maxBodyBytes);
     } catch (error) {
       if (error && error.code === "BODY_TOO_LARGE") {
-        sendJson(response, 413, { status: "error", error: "Evaluation request is too large." });
+        sendJson(response, 413, {
+          status: "error",
+          error: isSimulatorTurnRequest ? "Simulator request is too large." : "Evaluation request is too large.",
+        });
         return;
       }
       if (error && error.code === "INVALID_JSON") {
-        sendJson(response, 400, { status: "error", error: "Evaluation request must be valid JSON." });
+        sendJson(response, 400, {
+          status: "error",
+          error: isSimulatorTurnRequest ? "Simulator request must be valid JSON." : "Evaluation request must be valid JSON.",
+        });
         return;
       }
-      sendJson(response, 400, { status: "error", error: "Evaluation request could not be read." });
+      sendJson(response, 400, {
+        status: "error",
+        error: isSimulatorTurnRequest ? "Simulator request could not be read." : "Evaluation request could not be read.",
+      });
       return;
     }
 
     let validatedPayload;
     try {
-      validatedPayload = validateEvaluationPayload(rawPayload);
+      validatedPayload = isSimulatorTurnRequest
+        ? { payload: validateSimulatorTurnPayload(rawPayload) }
+        : validateEvaluationPayload(rawPayload);
     } catch (error) {
-      sendJson(response, 400, { status: "error", error: "Evaluation request is invalid." });
+      sendJson(response, 400, {
+        status: "error",
+        error: isSimulatorTurnRequest ? "Simulator request is invalid." : "Evaluation request is invalid.",
+      });
       return;
     }
+
+    if (isSimulatorTurnRequest) {
+      if (typeof simulator.isConfigured === "function" && !simulator.isConfigured()) {
+        sendJson(response, 503, { status: "unavailable", error: "AI Client Simulator is not configured." });
+        return;
+      }
+      try {
+        const simulated = await simulator.simulate(validatedPayload.payload);
+        sendJson(response, 200, {
+          status: "completed",
+          action: simulated.action,
+          message: simulated.message,
+          reason: simulated.reason,
+          ...(typeof simulated.model === "string" ? { model: simulated.model } : {}),
+          ...(simulated.usage && typeof simulated.usage === "object" ? { usage: simulated.usage } : {}),
+        });
+      } catch (error) {
+        if (error && error.code === "SIM_UNCONFIGURED") {
+          sendJson(response, 503, { status: "unavailable", error: "AI Client Simulator is not configured." });
+          return;
+        }
+        if (error && error.code === "SIM_TIMEOUT") {
+          sendJson(response, 504, { status: "error", error: "AI Client Simulator timed out." });
+          return;
+        }
+        if (error && typeof error.code === "string" && error.code.startsWith("SIM_")) {
+          sendJson(response, 502, { status: "error", error: "AI Client Simulator failed safely." });
+          return;
+        }
+        sendJson(response, 502, { status: "error", error: "AI Client Simulator failed safely." });
+      }
+      return;
+    }
+
     const { payload, enabledKeys } = validatedPayload;
     if (!enabledKeys.length) {
       sendJson(response, 200, {
@@ -297,6 +396,8 @@ module.exports = {
   EVALUATION_PATH,
   HOST,
   MAX_BODY_BYTES,
+  SIMULATOR_CATALOG_PATH,
+  SIMULATOR_TURN_PATH,
   createHandler,
   createServer,
   resolveRequestedFile,

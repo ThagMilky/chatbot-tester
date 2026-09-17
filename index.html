@@ -40,7 +40,8 @@
           <a href="#scenarios-section"><span class="nav-index">04</span>Test Scenarios</a>
           <a href="#conversation-workspace"><span class="nav-index">05</span>Conversation Workspace</a>
           <a href="#backend-debug"><span class="nav-index">06</span>Backend Debug</a>
-          <a href="#export-qa-section"><span class="nav-index">07</span>Export QA</a>
+          <a href="#ai-client-simulator-section"><span class="nav-index">07</span>AI Client Simulator</a>
+          <a href="#export-qa-section"><span class="nav-index">08</span>Export QA</a>
         </nav>
         <p class="sidebar-help">Use the phase trail to move from imported evidence to a repeatable QA result.</p>
       </aside>
@@ -269,6 +270,48 @@
               <div class="tool-actions ai-behavior-actions">
                 <button id="reevaluate-behavior" class="secondary-button" type="button" disabled>Re-evaluate Behavior</button>
               </div>
+            </section>
+
+            <section id="ai-client-simulator-section" class="tool-section ai-client-simulator" aria-labelledby="ai-client-simulator-title">
+              <div class="tool-heading">
+                <div>
+                  <p class="section-kicker">Exploratory</p>
+                  <h3 id="ai-client-simulator-title">AI Client Simulator</h3>
+                </div>
+                <span id="simulator-status" class="tool-status" aria-live="polite">Not run</span>
+              </div>
+              <p class="field-hint">An AI acts as a realistic client using the selected profile and visible conversation. It does not run deterministic assertions.</p>
+              <div class="simulator-form-grid">
+                <div>
+                  <label for="simulator-service">Service</label>
+                  <select id="simulator-service" disabled>
+                    <option>Loading services...</option>
+                  </select>
+                </div>
+                <div>
+                  <label for="simulator-scenario">Scenario</label>
+                  <select id="simulator-scenario" disabled>
+                    <option>Loading scenarios...</option>
+                  </select>
+                </div>
+                <div>
+                  <label for="simulator-difficulty">Difficulty</label>
+                  <select id="simulator-difficulty">
+                    <option value="normal">Normal</option>
+                    <option value="challenging">Challenging</option>
+                  </select>
+                </div>
+                <div>
+                  <label for="simulator-max-turns">Max client turns</label>
+                  <input id="simulator-max-turns" type="number" min="1" max="20" step="1" value="8" />
+                </div>
+              </div>
+              <div class="tool-actions simulator-action-row">
+                <button id="start-simulator" class="primary-button" type="button" disabled>Start</button>
+                <button id="pause-simulator" class="secondary-button" type="button" disabled>Pause</button>
+                <button id="stop-simulator" class="secondary-button" type="button" disabled>Stop</button>
+              </div>
+              <div id="simulator-summary" class="simulator-summary empty-debug-value" aria-live="polite">Not run</div>
             </section>
 
             <section id="export-qa-section" class="tool-section" aria-labelledby="export-title">
