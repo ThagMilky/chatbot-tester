@@ -627,6 +627,12 @@
 
   function updateChannelDisplay() {
     const isMessenger = state.channelMode === "messenger";
+    if (!isMessenger) {
+      state.senderMode = "client";
+    } else if (!["client", "staff"].includes(state.senderMode)) {
+      state.senderMode = "client";
+    }
+    const senderModeLocked = !isMessenger || isRequestBlocked();
     if (elements.channelMode) {
       elements.channelMode.value = state.channelMode;
     }
@@ -654,8 +660,11 @@
     if (elements.senderModeInputs) {
       elements.senderModeInputs.forEach(function (input) {
         input.checked = isMessenger && input.value === state.senderMode;
-        input.disabled = !isMessenger || state.isSending || isReplayLocked() || isSimulatorLocked();
+        input.disabled = senderModeLocked;
       });
+    }
+    if (elements.senderModeControls) {
+      elements.senderModeControls.setAttribute("aria-disabled", String(senderModeLocked));
     }
   }
 
@@ -3063,7 +3072,7 @@
       if (state.channelMode !== "messenger") state.senderMode = "client";
       clearSuggestedOptions();
       renderMessages();
-      updateChannelDisplay();
+      updateLoadingControls();
     });
   }
   if (elements.senderModeInputs) {
@@ -3071,7 +3080,6 @@
       input.addEventListener("change", function (event) {
         if (state.channelMode !== "messenger" || isRequestBlocked()) return;
         state.senderMode = event.target.value === "staff" ? "staff" : "client";
-        updateChannelDisplay();
         updateLoadingControls();
       });
     });

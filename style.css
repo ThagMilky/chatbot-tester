@@ -573,6 +573,11 @@ textarea:focus {
   font-weight: 750;
 }
 
+.sender-mode-option:has(input:disabled) {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 .sender-mode-option:has(input:checked) {
   border-color: #f0c98b;
   color: #6b4310;
@@ -581,6 +586,10 @@ textarea:focus {
 
 .sender-mode-option input {
   accent-color: var(--accent);
+}
+
+.sender-mode-option input:disabled {
+  cursor: not-allowed;
 }
 
 textarea {
