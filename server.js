@@ -3,9 +3,11 @@
 const http = require("http");
 const fs = require("fs");
 const path = require("path");
+const TESTER_RUNTIME_ENV_KEYS = new Set(["PORT"]);
 
-function loadLocalEnv(filePath = path.join(__dirname, ".env")) {
+function loadLocalEnv(filePath = path.join(__dirname, ".env"), options = {}) {
   if (!fs.existsSync(filePath)) return;
+  const protectedKeys = options.protectedKeys || new Set();
   const lines = fs.readFileSync(filePath, "utf8").split(/\r?\n/u);
   lines.forEach((line) => {
     const trimmed = line.trim();
@@ -13,7 +15,7 @@ function loadLocalEnv(filePath = path.join(__dirname, ".env")) {
     const equalsIndex = trimmed.indexOf("=");
     if (equalsIndex <= 0) return;
     const name = trimmed.slice(0, equalsIndex).trim();
-    if (!/^[A-Za-z_][A-Za-z0-9_]*$/u.test(name) || process.env[name] !== undefined) return;
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/u.test(name) || protectedKeys.has(name) || process.env[name] !== undefined) return;
     let value = trimmed.slice(equalsIndex + 1).trim();
     if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
       value = value.slice(1, -1);
@@ -28,7 +30,7 @@ if (typeof process.env.CHATBOT_SHARED_ENV_PATH === "string" && process.env.CHATB
   const sharedEnvPath = path.isAbsolute(configuredPath)
     ? configuredPath
     : path.resolve(__dirname, configuredPath);
-  loadLocalEnv(sharedEnvPath);
+  loadLocalEnv(sharedEnvPath, { protectedKeys: TESTER_RUNTIME_ENV_KEYS });
 }
 const {
   createAiEvaluator,
