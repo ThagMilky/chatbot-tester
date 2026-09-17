@@ -472,7 +472,7 @@
   function isReplayLocked() {
     return Boolean(state.replay && (
       state.replay.locked ||
-      ["running", "paused", "failed"].includes(state.replay.status)
+      ["running", "paused"].includes(state.replay.status)
     ));
   }
 
@@ -1453,6 +1453,7 @@
         replay.failedIndex = index;
         replay.status = "failed";
         replay.currentIndex = null;
+        replay.locked = false;
         updateReplayControls();
         showToast("Replay failed at turn " + (index + 1) + ". Retry the failed turn to continue.");
         return;
@@ -1536,6 +1537,7 @@
     const attempt = previousResult ? previousResult.attempt + 1 : 2;
     replay.stopRequested = false;
     replay.status = "running";
+    replay.locked = true;
     replay.currentIndex = index;
     replay.requestInFlight = true;
     updateReplayControls();
@@ -1554,6 +1556,7 @@
     if (result.status === "failed") {
       replay.status = "failed";
       replay.currentIndex = null;
+      replay.locked = false;
       updateReplayControls();
       showToast("Retry failed at turn " + (index + 1) + ".");
       return;
