@@ -3,6 +3,33 @@
 const http = require("http");
 const fs = require("fs");
 const path = require("path");
+
+function loadLocalEnv(filePath = path.join(__dirname, ".env")) {
+  if (!fs.existsSync(filePath)) return;
+  const lines = fs.readFileSync(filePath, "utf8").split(/\r?\n/u);
+  lines.forEach((line) => {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) return;
+    const equalsIndex = trimmed.indexOf("=");
+    if (equalsIndex <= 0) return;
+    const name = trimmed.slice(0, equalsIndex).trim();
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/u.test(name) || process.env[name] !== undefined) return;
+    let value = trimmed.slice(equalsIndex + 1).trim();
+    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+      value = value.slice(1, -1);
+    }
+    process.env[name] = value;
+  });
+}
+
+loadLocalEnv();
+if (typeof process.env.CHATBOT_SHARED_ENV_PATH === "string" && process.env.CHATBOT_SHARED_ENV_PATH.trim()) {
+  const configuredPath = process.env.CHATBOT_SHARED_ENV_PATH.trim();
+  const sharedEnvPath = path.isAbsolute(configuredPath)
+    ? configuredPath
+    : path.resolve(__dirname, configuredPath);
+  loadLocalEnv(sharedEnvPath);
+}
 const {
   createAiEvaluator,
   validateAiEvaluationResult,
@@ -319,6 +346,7 @@ function createHandler(options = {}) {
           message: simulated.message,
           reason: simulated.reason,
           ...(typeof simulated.model === "string" ? { model: simulated.model } : {}),
+          ...(typeof simulated.provider === "string" ? { provider: simulated.provider } : {}),
           ...(simulated.usage && typeof simulated.usage === "object" ? { usage: simulated.usage } : {}),
         });
       } catch (error) {

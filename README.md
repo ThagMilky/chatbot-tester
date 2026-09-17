@@ -75,15 +75,18 @@ The separate `AI Client Simulator` panel runs an exploratory conversation in a f
 
 The built-in profiles live in `ai-client-simulator.js`. The local server exposes their public service/scenario catalog at `GET /api/simulate-client-scenarios` and the AI turn endpoint at `POST /api/simulate-client-turn`. Pause/Resume stops progress between sequential turns, and Stop invalidates the active run so stale responses cannot restart a stopped or newer run. Simulator turns are recorded in the existing Turn Log with `runType: "simulator"`; the completed conversation remains available for manual inspection, export, or regression drafting.
 
-The simulator uses the OpenAI Responses API server-side with strict structured JSON output. It requires the same server-side `OPENAI_API_KEY` as the evaluator and accepts optional simulator-specific overrides:
+The simulator uses the Gemini GenerateContent API server-side so it can use a Gemini API key from the free tier. `server.js` loads a local `.env` file automatically. The simulator uses `GEMINI_SIMULATOR_MODEL`, falls back to `GEMINI_GENERATOR_MODEL`, then to its built-in default.
 
 ```text
-OPENAI_API_KEY=...
-OPENAI_SIMULATOR_MODEL=gpt-5.6-luna
-OPENAI_SIMULATOR_REASONING=high
-OPENAI_SIMULATOR_TIMEOUT_MS=30000
-OPENAI_SIMULATOR_API_BASE_URL=https://api.openai.com/v1
+GEMINI_API_KEY=...
+GEMINI_SIMULATOR_MODEL=gemini-3.6-flash
+GEMINI_SIMULATOR_TIMEOUT_MS=30000
+GEMINI_SIMULATOR_API_BASE_URL=https://generativelanguage.googleapis.com/v1beta
 ```
+
+The AI Behavior evaluator remains separate and can still use OpenAI when `OPENAI_API_KEY` is configured. Gemini configuration for the simulator does not require an OpenAI key.
+
+For a local workspace, the tester can reuse another env file without copying credentials. Put `CHATBOT_SHARED_ENV_PATH=..\chatbot-software-cyno\.env` in the tester's ignored `.env`; the server loads that file after the tester `.env`.
 
 If the key or simulator configuration is unavailable, the panel reports an unavailable/error state without breaking manual chat, replay, deterministic scenarios, or exports. The simulator receives no backend debug data, hidden chatbot state, Telegram payloads, API keys, expected answers, regression assertions, or evaluator internals. Bot replies are untrusted transcript data and cannot change the simulator's role or reveal its private profile.
 

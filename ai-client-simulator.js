@@ -1,14 +1,12 @@
 "use strict";
 
-const DEFAULT_BASE_URL = "https://api.openai.com/v1";
-const DEFAULT_MODEL = "gpt-5.6-luna";
-const DEFAULT_REASONING = "high";
+const DEFAULT_BASE_URL = "https://generativelanguage.googleapis.com/v1beta";
+const DEFAULT_MODEL = "gemini-3.6-flash";
 const DEFAULT_TIMEOUT_MS = 30000;
 const MAX_TEXT_LENGTH = 20000;
 const MAX_CLIENT_MESSAGE_LENGTH = 4000;
 const MAX_VISIBLE_MESSAGES = 80;
 const MAX_SIMULATOR_TURNS = 40;
-const REASONING_EFFORTS = Object.freeze(["none", "low", "medium", "high", "xhigh", "max"]);
 
 const SIMULATOR_SCENARIOS = Object.freeze([
   {
@@ -213,9 +211,12 @@ function positiveTimeout(value) {
 function safeUsage(value) {
   if (!isObject(value)) return undefined;
   const usage = {};
-  ["input_tokens", "output_tokens", "total_tokens"].forEach((key) => {
-    if (Number.isSafeInteger(value[key]) && value[key] >= 0) usage[key] = value[key];
-  });
+  const inputTokens = Number(value.promptTokenCount);
+  const outputTokens = Number(value.candidatesTokenCount);
+  const totalTokens = Number(value.totalTokenCount);
+  if (Number.isSafeInteger(inputTokens) && inputTokens >= 0) usage.input_tokens = inputTokens;
+  if (Number.isSafeInteger(outputTokens) && outputTokens >= 0) usage.output_tokens = outputTokens;
+  if (Number.isSafeInteger(totalTokens) && totalTokens >= 0) usage.total_tokens = totalTokens;
   return Object.keys(usage).length ? usage : undefined;
 }
 
@@ -227,37 +228,25 @@ function safeError(code, message, status) {
 }
 
 function responseText(data) {
-  if (data && (data.status === "incomplete" || data.incomplete_details)) {
-    throw safeError("SIM_INCOMPLETE", "The AI client simulation was incomplete.");
-  }
-  const output = Array.isArray(data && data.output) ? data.output : [];
-  const content = output.flatMap((item) => Array.isArray(item && item.content) ? item.content : []);
-  if (content.some((item) => item && item.type === "refusal")) {
-    throw safeError("SIM_REFUSAL", "The AI client simulation was refused.");
-  }
-  const text = [
-    data && typeof data.output_text === "string" ? data.output_text : "",
-    ...content.filter((item) => item && item.type === "output_text").map((item) => item.text),
-  ].find((item) => typeof item === "string" && item.trim());
+  const candidates = Array.isArray(data && data.candidates) ? data.candidates : [];
+  const parts = candidates.flatMap((candidate) =>
+    candidate && candidate.content && Array.isArray(candidate.content.parts) ? candidate.content.parts : [],
+  );
+  const text = parts.map((part) => part && typeof part.text === "string" ? part.text : "")
+    .find((value) => value.trim());
   if (!text) throw safeError("SIM_EMPTY_OUTPUT", "The AI client simulator returned no result.");
   return text.trim();
 }
 
 function createResponseSchema() {
   return {
-    type: "json_schema",
-    name: "chatbot_client_simulator_turn",
-    strict: true,
-    schema: {
-      type: "object",
-      additionalProperties: false,
-      properties: {
-        action: { type: "string", enum: ["message", "stop"] },
-        message: { type: "string", maxLength: MAX_CLIENT_MESSAGE_LENGTH },
-        reason: { type: "string", minLength: 1, maxLength: 500 },
-      },
-      required: ["action", "message", "reason"],
+    type: "OBJECT",
+    properties: {
+      action: { type: "STRING", enum: ["message", "stop"] },
+      message: { type: "STRING" },
+      reason: { type: "STRING" },
     },
+    required: ["action", "message", "reason"],
   };
 }
 
@@ -295,12 +284,10 @@ function redactSecretFromDecision(value, secret) {
 
 function createAiClientSimulator(options = {}) {
   const environment = options.env || process.env;
-  const apiKey = typeof environment.OPENAI_API_KEY === "string" ? environment.OPENAI_API_KEY.trim() : "";
-  const model = String(environment.OPENAI_SIMULATOR_MODEL || DEFAULT_MODEL).trim() || DEFAULT_MODEL;
-  const reasoningValue = String(environment.OPENAI_SIMULATOR_REASONING || DEFAULT_REASONING).trim();
-  const reasoning = REASONING_EFFORTS.includes(reasoningValue) ? reasoningValue : DEFAULT_REASONING;
-  const timeoutMs = positiveTimeout(environment.OPENAI_SIMULATOR_TIMEOUT_MS || environment.OPENAI_EVAL_TIMEOUT_MS);
-  const baseUrl = normalizedBaseUrl(environment.OPENAI_SIMULATOR_API_BASE_URL || environment.OPENAI_API_BASE_URL || DEFAULT_BASE_URL);
+  const apiKey = typeof environment.GEMINI_API_KEY === "string" ? environment.GEMINI_API_KEY.trim() : "";
+  const model = String(environment.GEMINI_SIMULATOR_MODEL || environment.GEMINI_GENERATOR_MODEL || DEFAULT_MODEL).trim() || DEFAULT_MODEL;
+  const timeoutMs = positiveTimeout(environment.GEMINI_SIMULATOR_TIMEOUT_MS || environment.OPENAI_EVAL_TIMEOUT_MS);
+  const baseUrl = normalizedBaseUrl(environment.GEMINI_SIMULATOR_API_BASE_URL || DEFAULT_BASE_URL);
   const fetchImpl = options.fetchImpl || globalThis.fetch;
   if (typeof fetchImpl !== "function") throw new Error("Fetch is unavailable for the AI client simulator.");
 
@@ -316,33 +303,32 @@ function createAiClientSimulator(options = {}) {
       controller.abort();
     }, timeoutMs);
     const requestBody = {
-      model,
-      reasoning: { effort: reasoning },
-      store: false,
-      input: [
-        { role: "system", content: [{ type: "input_text", text: buildSystemPrompt(payload.scenario, payload.difficulty) }] },
-        {
-          role: "user",
-          content: [{
-            type: "input_text",
-            text: JSON.stringify({
-              difficulty: payload.difficulty,
-              turnNumber: payload.turnNumber,
-              maxTurns: payload.maxTurns,
-              visibleConversation: payload.messages,
-            }),
-          }],
-        },
-      ],
-      text: { format: createResponseSchema() },
+      systemInstruction: { parts: [{ text: buildSystemPrompt(payload.scenario, payload.difficulty) }] },
+      contents: [{
+        role: "user",
+        parts: [{ text: JSON.stringify({
+          difficulty: payload.difficulty,
+          turnNumber: payload.turnNumber,
+          maxTurns: payload.maxTurns,
+          visibleConversation: payload.messages,
+        }) }],
+      }],
+      generationConfig: {
+        temperature: 0.9,
+        maxOutputTokens: 500,
+        responseMimeType: "application/json",
+        responseSchema: createResponseSchema(),
+      },
     };
+
 
     try {
       let response;
       try {
-        const fetchPromise = Promise.resolve().then(() => fetchImpl(baseUrl + "/responses", {
+        const endpoint = baseUrl + "/models/" + encodeURIComponent(model) + ":generateContent";
+        const fetchPromise = Promise.resolve().then(() => fetchImpl(endpoint, {
           method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: "Bearer " + apiKey },
+          headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
           body: JSON.stringify(requestBody),
           signal: controller.signal,
         }));
@@ -357,7 +343,7 @@ function createAiClientSimulator(options = {}) {
           controller.abort();
           throw error;
         }
-        throw safeError("SIM_NETWORK_ERROR", "AI client simulator could not reach OpenAI.");
+        throw safeError("SIM_NETWORK_ERROR", "AI client simulator could not reach Gemini.");
       }
       if (!response || typeof response.json !== "function") {
         throw safeError("SIM_INVALID_RESPONSE", "AI client simulator returned an invalid response.");
@@ -365,6 +351,7 @@ function createAiClientSimulator(options = {}) {
       if (!response.ok) {
         throw safeError("SIM_HTTP_ERROR", "AI client simulator returned an upstream error.", response.status);
       }
+
       let data;
       try {
         data = await response.json();
@@ -379,11 +366,12 @@ function createAiClientSimulator(options = {}) {
         throw safeError("SIM_INVALID_RESULT", "AI client simulator returned malformed JSON.");
       }
       const validated = validateSimulatorDecision(parsed);
-      const usage = safeUsage(data.usage);
+      const usage = safeUsage(data.usageMetadata);
       return {
         status: "completed",
         ...validated,
         model,
+        provider: "gemini",
         ...(usage ? { usage } : {}),
       };
     } finally {
@@ -396,14 +384,13 @@ function createAiClientSimulator(options = {}) {
     simulate,
     isConfigured: () => Boolean(apiKey),
     model,
-    reasoning,
+    provider: "gemini",
   };
 }
 
 module.exports = {
   DEFAULT_BASE_URL,
   DEFAULT_MODEL,
-  DEFAULT_REASONING,
   DEFAULT_TIMEOUT_MS,
   MAX_SIMULATOR_TURNS,
   SIMULATOR_SCENARIOS,
