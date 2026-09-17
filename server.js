@@ -203,6 +203,33 @@ function createSafeSimulator(options) {
   }
 }
 
+function safeSimulatorErrorDetails(error) {
+  const details = error && error.details && typeof error.details === "object" ? error.details : {};
+  const clean = {
+    code: typeof error?.code === "string" ? error.code.slice(0, 80) : "SIM_UNKNOWN",
+    provider: typeof details.provider === "string" ? details.provider.slice(0, 40) : "gemini",
+    model: typeof details.model === "string" ? details.model.slice(0, 120) : undefined,
+    upstreamStatus: Number.isInteger(details.upstreamStatus) ? details.upstreamStatus : (Number.isInteger(error?.status) ? error.status : undefined),
+    upstreamCode: typeof details.upstreamCode === "string" ? details.upstreamCode.slice(0, 120) : undefined,
+    upstreamMessage: typeof details.upstreamMessage === "string" ? details.upstreamMessage.slice(0, 400) : undefined,
+  };
+  return Object.fromEntries(Object.entries(clean).filter(([, value]) => value !== undefined && value !== ""));
+}
+
+function simulatorPublicMessage(details) {
+  if (details.code === "SIM_NETWORK_ERROR") return "Gemini network error.";
+  if (details.code === "SIM_INVALID_JSON" || details.code === "SIM_INVALID_RESULT" || details.code === "SIM_EMPTY_OUTPUT") {
+    return "Gemini returned an invalid structured response.";
+  }
+  if (details.code === "SIM_HTTP_ERROR") {
+    const status = details.upstreamStatus ? " HTTP " + details.upstreamStatus : "";
+    const code = details.upstreamCode ? " (" + details.upstreamCode + ")" : "";
+    const message = details.upstreamMessage ? ": " + details.upstreamMessage : "";
+    return "Gemini" + status + code + message;
+  }
+  return "AI Client Simulator failed safely.";
+}
+
 function createStaticHandler(options = {}) {
   const rootDir = options.rootDir || ROOT_DIR;
   return (request, response) => {
@@ -355,14 +382,22 @@ function createHandler(options = {}) {
           return;
         }
         if (error && error.code === "SIM_TIMEOUT") {
-          sendJson(response, 504, { status: "error", error: "AI Client Simulator timed out." });
+          sendJson(response, 504, { status: "error", error: "AI Client Simulator timed out.", code: "SIM_TIMEOUT" });
           return;
         }
         if (error && typeof error.code === "string" && error.code.startsWith("SIM_")) {
-          sendJson(response, 502, { status: "error", error: "AI Client Simulator failed safely." });
+          const details = safeSimulatorErrorDetails(error);
+          console.error("[AI Client Simulator]", JSON.stringify(details));
+          sendJson(response, 502, {
+            status: "error",
+            error: simulatorPublicMessage(details),
+            code: details.code,
+            details,
+          });
           return;
         }
-        sendJson(response, 502, { status: "error", error: "AI Client Simulator failed safely." });
+        console.error("[AI Client Simulator]", JSON.stringify({ code: "SIM_UNKNOWN" }));
+        sendJson(response, 502, { status: "error", error: "AI Client Simulator failed safely.", code: "SIM_UNKNOWN" });
       }
       return;
     }

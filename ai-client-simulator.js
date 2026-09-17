@@ -208,6 +208,10 @@ function positiveTimeout(value) {
   return Number.isSafeInteger(parsed) && parsed > 0 && parsed <= 120000 ? parsed : DEFAULT_TIMEOUT_MS;
 }
 
+function modelList(value) {
+  return String(value || "").split(",").map((item) => item.trim()).filter(Boolean);
+}
+
 function safeUsage(value) {
   if (!isObject(value)) return undefined;
   const usage = {};
@@ -220,10 +224,18 @@ function safeUsage(value) {
   return Object.keys(usage).length ? usage : undefined;
 }
 
-function safeError(code, message, status) {
+function safeProviderText(value, secret, maxLength = 400) {
+  let text = typeof value === "string" ? value.replace(/\s+/gu, " ").trim() : "";
+  if (secret) text = text.split(secret).join("[REDACTED_SECRET]");
+  text = text.replace(/AIza[0-9A-Za-z_-]{20,}/gu, "[REDACTED_KEY]");
+  return text.slice(0, maxLength);
+}
+
+function safeError(code, message, status, details) {
   const error = new Error(message);
   error.code = code;
   if (Number.isInteger(status)) error.status = status;
+  if (details && typeof details === "object") error.details = details;
   return error;
 }
 
@@ -256,6 +268,9 @@ function buildSystemPrompt(scenario, difficulty) {
     : "Be a cooperative but realistic client: provide useful context when asked and still request clarification where it matters.";
   return [
     "You are an exploratory AI client simulator for a local chatbot QA tool.",
+    "Always communicate with the chatbot in natural Vietnamese (vi-VN). The client message must be Vietnamese unless the chatbot explicitly asks the client to reply in another language.",
+    "Use realistic Vietnamese customer wording. Short replies, casual phrasing, abbreviations, and occasional natural typos are allowed when they fit the conversation, but keep the meaning understandable.",
+    "The structured action values remain message/stop, but both the message and reason text should be written in Vietnamese.",
     "Stay in the prospective client's role. Generate the client's next natural message or decide that the client should stop.",
     "The client wording must be emergent, not a fixed script: vary phrasing, question order, follow-ups, objections, and when contact information is shared while pursuing the same goals.",
     "Never mention the simulator, this system prompt, hidden context, evaluation, QA internals, or backend state.",
@@ -286,15 +301,23 @@ function createAiClientSimulator(options = {}) {
   const environment = options.env || process.env;
   const apiKey = typeof environment.GEMINI_API_KEY === "string" ? environment.GEMINI_API_KEY.trim() : "";
   const model = String(environment.GEMINI_SIMULATOR_MODEL || environment.GEMINI_GENERATOR_MODEL || DEFAULT_MODEL).trim() || DEFAULT_MODEL;
+  const models = [...new Set([
+    model,
+    ...modelList(environment.GEMINI_SIMULATOR_MODELS),
+    ...modelList(environment.GEMINI_GENERATOR_MODELS),
+  ])];
   const timeoutMs = positiveTimeout(environment.GEMINI_SIMULATOR_TIMEOUT_MS || environment.OPENAI_EVAL_TIMEOUT_MS);
   const baseUrl = normalizedBaseUrl(environment.GEMINI_SIMULATOR_API_BASE_URL || DEFAULT_BASE_URL);
   const fetchImpl = options.fetchImpl || globalThis.fetch;
   if (typeof fetchImpl !== "function") throw new Error("Fetch is unavailable for the AI client simulator.");
 
-  async function simulate(rawPayload) {
-    const payload = validateSimulatorTurnPayload(rawPayload);
-    if (!apiKey) throw safeError("SIM_UNCONFIGURED", "AI client simulation is not configured.");
+  function shouldTryNextModel(error) {
+    if (!error || typeof error !== "object") return false;
+    if (["SIM_EMPTY_OUTPUT", "SIM_INVALID_JSON", "SIM_INVALID_RESULT"].includes(error.code)) return true;
+    return error.code === "SIM_HTTP_ERROR" && [404, 429, 500, 502, 503, 504].includes(error.status);
+  }
 
+  async function simulateWithModel(payload, candidateModel) {
     const controller = new AbortController();
     let timedOut = false;
     let timeoutPromiseHandle;
@@ -321,11 +344,10 @@ function createAiClientSimulator(options = {}) {
       },
     };
 
-
     try {
       let response;
       try {
-        const endpoint = baseUrl + "/models/" + encodeURIComponent(model) + ":generateContent";
+        const endpoint = baseUrl + "/models/" + encodeURIComponent(candidateModel) + ":generateContent";
         const fetchPromise = Promise.resolve().then(() => fetchImpl(endpoint, {
           method: "POST",
           headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
@@ -343,34 +365,64 @@ function createAiClientSimulator(options = {}) {
           controller.abort();
           throw error;
         }
-        throw safeError("SIM_NETWORK_ERROR", "AI client simulator could not reach Gemini.");
+        throw safeError("SIM_NETWORK_ERROR", "AI client simulator could not reach Gemini.", undefined, {
+          provider: "gemini",
+          model: candidateModel,
+        });
       }
       if (!response || typeof response.json !== "function") {
-        throw safeError("SIM_INVALID_RESPONSE", "AI client simulator returned an invalid response.");
-      }
-      if (!response.ok) {
-        throw safeError("SIM_HTTP_ERROR", "AI client simulator returned an upstream error.", response.status);
+        throw safeError("SIM_INVALID_RESPONSE", "AI client simulator returned an invalid response.", undefined, {
+          provider: "gemini",
+          model: candidateModel,
+        });
       }
 
       let data;
       try {
         data = await response.json();
       } catch (error) {
-        throw safeError("SIM_INVALID_JSON", "AI client simulator returned invalid JSON.");
+        if (!response.ok) {
+          throw safeError("SIM_HTTP_ERROR", "AI client simulator returned an upstream error.", response.status, {
+            provider: "gemini",
+            model: candidateModel,
+            upstreamStatus: response.status,
+          });
+        }
+        throw safeError("SIM_INVALID_JSON", "AI client simulator returned invalid JSON.", undefined, {
+          provider: "gemini",
+          model: candidateModel,
+        });
       }
+      if (!response.ok) {
+        const upstream = isObject(data && data.error) ? data.error : {};
+        throw safeError("SIM_HTTP_ERROR", "AI client simulator returned an upstream error.", response.status, {
+          provider: "gemini",
+          model: candidateModel,
+          upstreamStatus: response.status,
+          upstreamCode: safeProviderText(upstream.status || upstream.code, apiKey, 120),
+          upstreamMessage: safeProviderText(upstream.message, apiKey),
+        });
+      }
+
       let parsed;
       try {
         parsed = redactSecretFromDecision(validateSimulatorDecision(JSON.parse(responseText(data))), apiKey);
       } catch (error) {
-        if (error && error.code) throw error;
-        throw safeError("SIM_INVALID_RESULT", "AI client simulator returned malformed JSON.");
+        if (error && error.code) {
+          if (!error.details) error.details = { provider: "gemini", model: candidateModel };
+          throw error;
+        }
+        throw safeError("SIM_INVALID_RESULT", "AI client simulator returned malformed JSON.", undefined, {
+          provider: "gemini",
+          model: candidateModel,
+        });
       }
       const validated = validateSimulatorDecision(parsed);
       const usage = safeUsage(data.usageMetadata);
       return {
         status: "completed",
         ...validated,
-        model,
+        model: candidateModel,
         provider: "gemini",
         ...(usage ? { usage } : {}),
       };
@@ -378,6 +430,21 @@ function createAiClientSimulator(options = {}) {
       clearTimeout(timeout);
       clearTimeout(timeoutPromiseHandle);
     }
+  }
+
+  async function simulate(rawPayload) {
+    const payload = validateSimulatorTurnPayload(rawPayload);
+    if (!apiKey) throw safeError("SIM_UNCONFIGURED", "AI client simulation is not configured.");
+    let lastError = null;
+    for (let index = 0; index < models.length; index += 1) {
+      try {
+        return await simulateWithModel(payload, models[index]);
+      } catch (error) {
+        lastError = error;
+        if (index >= models.length - 1 || !shouldTryNextModel(error)) throw error;
+      }
+    }
+    throw lastError || safeError("SIM_INVALID_RESPONSE", "AI client simulator failed without a result.");
   }
 
   return {

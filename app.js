@@ -1975,6 +1975,8 @@
       const error = new Error(body && typeof body.error === "string" ? body.error : "AI Client Simulator request failed.");
       error.status = response.status;
       error.unavailable = Boolean(body && body.status === "unavailable");
+      error.code = body && typeof body.code === "string" ? body.code : "";
+      error.details = body && body.details && typeof body.details === "object" ? body.details : null;
       throw error;
     }
     return parseSimulatorDecision(body);
@@ -2021,7 +2023,7 @@
           error && error.unavailable ? "unavailable" : "error",
           error && error.unavailable
             ? "AI Client Simulator is unavailable. Manual chat and existing QA tools remain available."
-            : "AI Client Simulator stopped after an error. Inspect the local server configuration and status.",
+            : "AI Client Simulator stopped: " + (error && error.message ? error.message : "unknown simulator error") + " The conversation remains available for inspection.",
         );
         return;
       }
