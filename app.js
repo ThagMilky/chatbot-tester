@@ -1454,7 +1454,7 @@
         replay.status = "failed";
         replay.currentIndex = null;
         replay.locked = false;
-        updateReplayControls();
+        updateLoadingControls();
         showToast("Replay failed at turn " + (index + 1) + ". Retry the failed turn to continue.");
         return;
       }
@@ -1557,7 +1557,7 @@
       replay.status = "failed";
       replay.currentIndex = null;
       replay.locked = false;
-      updateReplayControls();
+      updateLoadingControls();
       showToast("Retry failed at turn " + (index + 1) + ".");
       return;
     }
