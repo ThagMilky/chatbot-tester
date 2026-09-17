@@ -2683,3 +2683,285 @@ pre {
     background: transparent;
   }
 }
+
+/* Tabbed workspace layout */
+html,
+body,
+.app-shell,
+.app-main {
+  height: 100%;
+}
+
+body {
+  overflow: hidden;
+}
+
+.app-main {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+}
+
+.topbar {
+  position: relative;
+  z-index: 2;
+  min-height: 0;
+  flex-wrap: wrap;
+  padding: 12px 24px;
+  background: var(--panel);
+}
+
+.topbar-brand {
+  display: flex;
+  min-width: max-content;
+  align-items: center;
+  gap: 10px;
+}
+
+.topbar-brand .eyebrow,
+.topbar-brand .subtitle {
+  display: none;
+}
+
+.topbar h1 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.global-controls {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 620px;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.global-controls > .field-group,
+.global-controls > .api-display,
+.global-controls > .test-mode-card,
+.global-controls > .edge-test-card,
+.global-controls > .control-actions {
+  min-width: 0;
+  margin: 0;
+}
+
+.global-controls .field-group {
+  display: grid;
+  gap: 3px;
+}
+
+.global-controls label,
+.global-controls .display-label {
+  font-size: 0.62rem;
+}
+
+.global-controls select,
+.global-controls input {
+  min-height: 32px;
+  padding: 5px 8px;
+  font-size: 0.73rem;
+}
+
+.global-controls .field-hint,
+.global-controls .api-display,
+.global-controls .test-mode-card .field-hint,
+.global-controls .edge-test-card .field-hint,
+.global-controls .check-row {
+  display: none;
+}
+
+.global-controls .api-display,
+.global-controls .test-mode-card,
+.global-controls .edge-test-card {
+  padding: 6px 8px;
+}
+
+.global-controls .test-mode-card,
+.global-controls .edge-test-card {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.global-controls .test-mode-card > div,
+.global-controls .edge-test-card > .toggle-row > div {
+  display: none;
+}
+
+.global-controls .edge-test-card .toggle-row {
+  gap: 6px;
+}
+
+.global-controls .session-field {
+  max-width: 215px;
+}
+
+.global-controls .session-row {
+  gap: 4px;
+}
+
+.global-controls .session-row .secondary-button,
+.global-controls .control-actions .secondary-button,
+.global-controls .control-actions .primary-button {
+  min-height: 32px;
+  padding: 0 9px;
+  font-size: 0.72rem;
+}
+
+.global-controls .control-actions {
+  display: flex;
+  gap: 5px;
+}
+
+.topbar-context {
+  min-width: 120px;
+  margin-left: 0;
+  padding-left: 12px;
+}
+
+.tab-navigation {
+  display: flex;
+  gap: 2px;
+  min-width: 0;
+  padding: 8px 24px 0;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.workspace-tab {
+  flex: 0 0 auto;
+  border: 0;
+  border-bottom: 3px solid transparent;
+  padding: 10px 13px 9px;
+  color: var(--muted);
+  background: transparent;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.workspace-tab:hover,
+.workspace-tab.is-active {
+  color: var(--accent-dark);
+}
+
+.workspace-tab.is-active {
+  border-bottom-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.tab-workspaces {
+  display: block;
+  min-height: 0;
+  padding: 20px 24px 24px;
+  overflow: hidden;
+}
+
+.workspace-panel {
+  height: 100%;
+  min-height: 0;
+  overflow: auto;
+}
+
+.workspace-panel[hidden] {
+  display: none;
+}
+
+#panel-chat .chat-panel {
+  height: 100%;
+  min-height: 0;
+}
+
+#panel-chat .chat-header {
+  display: flex;
+}
+
+.copy-chat-button {
+  margin-left: auto;
+}
+
+.message-row.ai-client .message-bubble {
+  color: #fff;
+  background: var(--accent-dark);
+}
+
+.workspace-panel > .tool-section,
+.workspace-panel > .debug-panel {
+  max-width: 1120px;
+  margin: 0 auto;
+}
+
+.workspace-panel > .tool-section {
+  min-height: 100%;
+}
+
+#panel-debug .debug-panel {
+  position: static;
+  max-height: none;
+  overflow: visible;
+}
+
+#panel-debug .debug-panel details {
+  max-height: none;
+  overflow: visible;
+}
+
+@media (max-width: 1180px) {
+  .topbar {
+    align-items: flex-start;
+  }
+
+  .global-controls {
+    order: 3;
+    width: 100%;
+    flex-basis: 100%;
+    justify-content: flex-start;
+    overflow-x: auto;
+    padding-top: 4px;
+  }
+}
+
+@media (max-width: 760px) {
+  body {
+    overflow: auto;
+  }
+
+  .app-shell,
+  .app-main {
+    height: auto;
+    min-height: 100vh;
+  }
+
+  .app-main {
+    display: block;
+  }
+
+  .topbar,
+  .tab-navigation,
+  .tab-workspaces {
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+
+  .topbar-context,
+  .local-badge {
+    display: none;
+  }
+
+  .topbar-actions {
+    margin-left: auto;
+  }
+
+  .tab-workspaces {
+    overflow: visible;
+  }
+
+  .workspace-panel {
+    height: auto;
+    overflow: visible;
+  }
+
+  #panel-chat .chat-panel {
+    height: min(680px, calc(100vh - 150px));
+  }
+}

@@ -38,14 +38,6 @@
     writeThemePreference(nextTheme);
   }
 
-  function setNavigationOpen(isOpen) {
-    if (!elements.sidebar || !elements.sidebarToggle || !elements.sidebarScrim) return;
-    elements.sidebar.classList.toggle("is-open", isOpen);
-    elements.sidebarScrim.classList.toggle("is-visible", isOpen);
-    elements.sidebarToggle.setAttribute("aria-expanded", String(isOpen));
-    document.body.classList.toggle("nav-open", isOpen);
-  }
-
   // Adapter boundary: change these functions when a bot uses a different contract.
   function getChannelSettings(bot, channelMode) {
     const channels = bot && isObject(bot.channels) ? bot.channels : {};
@@ -269,9 +261,8 @@
   }
 
   const elements = {
-    sidebar: document.getElementById("sidebar"),
-    sidebarToggle: document.getElementById("sidebar-toggle"),
-    sidebarScrim: document.getElementById("sidebar-scrim"),
+    workspaceTabs: Array.prototype.slice.call(document.querySelectorAll(".workspace-tab")),
+    workspacePanels: Array.prototype.slice.call(document.querySelectorAll(".workspace-panel")),
     themeToggle: document.getElementById("theme-toggle"),
     headerBotContext: document.getElementById("header-bot-context"),
     headerStatusContext: document.getElementById("header-status-context"),
@@ -285,6 +276,8 @@
     copySession: document.getElementById("copy-session"),
     newConversation: document.getElementById("new-conversation"),
     clearChat: document.getElementById("clear-chat"),
+    copyChat: document.getElementById("copy-chat"),
+    copySimulatorChat: document.getElementById("copy-simulator-chat"),
     channelMode: document.getElementById("channel-mode"),
     senderModeControls: document.getElementById("sender-mode-controls"),
     senderModeInputs: document.querySelectorAll("input[name='sender-mode']"),
@@ -370,6 +363,52 @@
     debugStack: document.getElementById("debug-stack"),
     toast: document.getElementById("toast"),
   };
+
+  function setActiveWorkspace(tabId) {
+    const activeTab = elements.workspaceTabs.find(function (tab) { return tab.id === tabId; }) || elements.workspaceTabs[0];
+    if (!activeTab) return;
+    const panelId = activeTab.getAttribute("aria-controls");
+    elements.workspaceTabs.forEach(function (tab) {
+      const isActive = tab === activeTab;
+      tab.setAttribute("aria-selected", String(isActive));
+      tab.tabIndex = isActive ? 0 : -1;
+      tab.classList.toggle("is-active", isActive);
+    });
+    elements.workspacePanels.forEach(function (panel) {
+      panel.hidden = panel.id !== panelId;
+    });
+  }
+
+  function organizeWorkspacePanels() {
+    const globalControls = document.getElementById("global-controls");
+    const setup = document.getElementById("setup-section");
+    const panelMap = {
+      "conversation-workspace": "panel-chat",
+      "ai-client-simulator-section": "panel-simulator",
+      "conversation-import-section": "panel-replay",
+      "regression-builder-section": "panel-regression",
+      "scenarios-section": "panel-scenarios",
+      "backend-debug": "panel-debug",
+    };
+
+    if (setup && globalControls) {
+      Array.prototype.slice.call(setup.children).forEach(function (child) {
+        if (child.matches(".field-group, .api-display, .test-mode-card, .edge-test-card, .control-actions")) {
+          globalControls.appendChild(child);
+        }
+      });
+    }
+
+    Object.keys(panelMap).forEach(function (sourceId) {
+      const source = document.getElementById(sourceId);
+      const destination = document.getElementById(panelMap[sourceId]);
+      if (source && destination) destination.appendChild(source);
+    });
+
+    if (setup) setup.remove();
+    const legacyContent = document.getElementById("legacy-workspace-content");
+    if (legacyContent) legacyContent.remove();
+  }
 
   const state = {
     bots: Array.isArray(window.CHATBOT_CONFIG)
@@ -985,6 +1024,32 @@
     return Promise.resolve();
   }
 
+  function getConversationRole(message) {
+    if (message.type === "ai-client") return "AI Client";
+    if (message.type === "user") return "Client";
+    if (message.type === "staff") return "Staff";
+    if (message.type === "bot") return "Bot";
+    if (message.type === "system") return "Bot status";
+    return "Tester";
+  }
+
+  function formatConversationTranscript() {
+    return state.messages.map(function (message) {
+      return getConversationRole(message) + ":\n" + String(message.text);
+    }).join("\n\n");
+  }
+
+  function updateCopyChatControls() {
+    const disabled = state.messages.length === 0;
+    if (elements.copyChat) elements.copyChat.disabled = disabled;
+    if (elements.copySimulatorChat) elements.copySimulatorChat.disabled = disabled;
+  }
+
+  function copyConversation() {
+    if (!state.messages.length) return;
+    void copyText(formatConversationTranscript(), "Conversation copied.");
+  }
+
   function copyTurnRequest(turn) {
     if (!turn || !turn.request) {
       showToast("Turn này chưa có request để copy.");
@@ -1026,6 +1091,7 @@
 
   function renderMessages(shouldScroll) {
     elements.messages.replaceChildren();
+    updateCopyChatControls();
 
     if (!state.messages.length) {
       elements.messages.appendChild(elements.emptyState);
@@ -1055,15 +1121,7 @@
 
       const meta = document.createElement("span");
       meta.className = "message-meta";
-      meta.textContent = message.type === "user"
-        ? "Client"
-        : message.type === "staff"
-          ? "Staff"
-          : message.type === "bot"
-            ? "Bot"
-            : message.type === "system"
-              ? "Bot status"
-              : "Tester";
+      meta.textContent = getConversationRole(message);
 
       const bubble = document.createElement("div");
       bubble.className = "message-bubble";
@@ -1824,7 +1882,7 @@
     let failureType = "connection";
 
     clearSuggestedOptions();
-    addMessage(isStaffRequest ? "staff" : "user", messageLabel, [], turn.id);
+    addMessage(isStaffRequest ? "staff" : sendOptions && sendOptions.simulator ? "ai-client" : "user", messageLabel, [], turn.id);
     elements.messageInput.value = "";
     updateTurn(turn, {
       message: message,
@@ -2025,10 +2083,10 @@
 
   function getVisibleSimulatorConversation() {
     return state.messages
-      .filter(function (message) { return message.type === "user" || message.type === "bot"; })
+      .filter(function (message) { return ["user", "ai-client", "bot"].includes(message.type); })
       .map(function (message) {
         return {
-          role: message.type === "user" ? "client" : "bot",
+          role: message.type === "bot" ? "bot" : "client",
           text: String(message.text),
         };
       });
@@ -3210,27 +3268,26 @@
   if (elements.themeToggle) {
     elements.themeToggle.addEventListener("click", toggleTheme);
   }
-  if (elements.sidebarToggle) {
-    elements.sidebarToggle.addEventListener("click", function () {
-      setNavigationOpen(!elements.sidebar.classList.contains("is-open"));
+  elements.workspaceTabs.forEach(function (tab, index) {
+    tab.addEventListener("click", function () {
+      setActiveWorkspace(tab.id);
     });
-  }
-  if (elements.sidebarScrim) {
-    elements.sidebarScrim.addEventListener("click", function () {
-      setNavigationOpen(false);
+    tab.addEventListener("keydown", function (event) {
+      if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+      event.preventDefault();
+      const nextIndex = event.key === "Home" ? 0
+        : event.key === "End" ? elements.workspaceTabs.length - 1
+          : (index + (event.key === "ArrowRight" ? 1 : -1) + elements.workspaceTabs.length) % elements.workspaceTabs.length;
+      const nextTab = elements.workspaceTabs[nextIndex];
+      setActiveWorkspace(nextTab.id);
+      nextTab.focus();
     });
-  }
-  if (elements.sidebar) {
-    elements.sidebar.addEventListener("click", function (event) {
-      if (event.target.closest("a")) setNavigationOpen(false);
-    });
-  }
-  document.addEventListener("keydown", function (event) {
-    if (event.key === "Escape") setNavigationOpen(false);
   });
   elements.copySession.addEventListener("click", function () {
     void copySessionId();
   });
+  if (elements.copyChat) elements.copyChat.addEventListener("click", copyConversation);
+  if (elements.copySimulatorChat) elements.copySimulatorChat.addEventListener("click", copyConversation);
   if (elements.scanConversation) {
     elements.scanConversation.addEventListener("click", scanConversation);
   }
@@ -3241,6 +3298,8 @@
       getConfiguredScenarioIds(),
     );
   }
+  organizeWorkspacePanels();
+  setActiveWorkspace("tab-chat");
   updateSessionDisplay();
   populateBotSelect();
   updateChannelDisplay();

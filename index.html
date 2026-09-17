@@ -24,67 +24,48 @@
   </head>
   <body>
     <div class="app-shell">
-      <aside id="sidebar" class="sidebar" aria-label="QA navigation">
-        <div class="sidebar-brand">
-          <div class="brand-mark" aria-hidden="true">Q</div>
-          <div>
-            <strong>Chatbot Tester</strong>
-            <span>Local QA Console</span>
-          </div>
-        </div>
-        <div class="sidebar-status"><span class="status-dot"></span> Local workspace</div>
-        <nav class="sidebar-nav" aria-label="QA sections">
-          <a href="#setup-section"><span class="nav-index">01</span>Setup</a>
-          <a href="#conversation-import-section"><span class="nav-index">02</span>Conversation Import / Replay</a>
-          <a href="#regression-builder-section"><span class="nav-index">03</span>Regression Builder</a>
-          <a href="#scenarios-section"><span class="nav-index">04</span>Test Scenarios</a>
-          <a href="#conversation-workspace"><span class="nav-index">05</span>Conversation Workspace</a>
-          <a href="#backend-debug"><span class="nav-index">06</span>Backend Debug</a>
-          <a href="#ai-client-simulator-section"><span class="nav-index">07</span>AI Client Simulator</a>
-          <a href="#export-qa-section"><span class="nav-index">08</span>Export QA</a>
-        </nav>
-        <p class="sidebar-help">Use the phase trail to move from imported evidence to a repeatable QA result.</p>
-      </aside>
-      <button id="sidebar-scrim" class="sidebar-scrim" type="button" aria-label="Close navigation"></button>
       <div class="app-main">
-      <header class="topbar">
-        <button id="sidebar-toggle" class="icon-button menu-button" type="button" aria-label="Open QA navigation" aria-controls="sidebar" aria-expanded="false">
-          <span aria-hidden="true">☰</span>
-        </button>
-        <div>
-          <p class="eyebrow">LOCAL QA TOOL</p>
-          <h1>Chatbot Tester</h1>
-          <p class="subtitle">Chat UI và backend debug cho nhiều chatbot.</p>
-        </div>
-        <div class="topbar-context" aria-live="polite">
-          <span class="context-label">Selected bot</span>
-          <strong id="header-bot-context">Not configured</strong>
-          <span id="header-status-context" class="status-pill pending">Not configured</span>
-        </div>
-        <div class="topbar-actions">
-          <span class="local-badge">localhost</span>
-          <button id="theme-toggle" class="icon-button theme-button" type="button" aria-label="Switch to dark theme" aria-pressed="false">
-            <span class="theme-icon-sun" aria-hidden="true">☼</span>
-            <span class="theme-icon-moon" aria-hidden="true">◐</span>
-          </button>
-        </div>
-      </header>
+        <header class="topbar">
+          <div class="topbar-brand">
+            <div class="brand-mark" aria-hidden="true">Q</div>
+            <div>
+              <p class="eyebrow">LOCAL QA TOOL</p>
+              <h1>Chatbot Tester</h1>
+              <p class="subtitle">Chat UI và backend debug cho nhiều chatbot.</p>
+            </div>
+          </div>
+          <div id="global-controls" class="global-controls" aria-label="Global chat settings"></div>
+          <div class="topbar-context" aria-live="polite">
+            <span class="context-label">Selected bot</span>
+            <strong id="header-bot-context">Not configured</strong>
+            <span id="header-status-context" class="status-pill pending">Not configured</span>
+          </div>
+          <div class="topbar-actions">
+            <span class="local-badge">localhost</span>
+            <button id="theme-toggle" class="icon-button theme-button" type="button" aria-label="Switch to dark theme" aria-pressed="false">
+              <span class="theme-icon-sun" aria-hidden="true">☼</span>
+              <span class="theme-icon-moon" aria-hidden="true">◐</span>
+            </button>
+          </div>
+        </header>
 
-      <div class="phase-rail" aria-label="QA phase flow">
-        <span class="phase-rail-label">QA flow</span>
-        <span class="phase-step"><b>1</b> Import</span>
-        <span class="phase-arrow" aria-hidden="true">→</span>
-        <span class="phase-step"><b>2</b> Replay</span>
-        <span class="phase-arrow" aria-hidden="true">→</span>
-        <span class="phase-step"><b>3</b> Regression</span>
-        <span class="phase-arrow" aria-hidden="true">→</span>
-        <span class="phase-step"><b>4</b> Run Scenario</span>
-        <span class="phase-arrow" aria-hidden="true">→</span>
-        <span class="phase-step"><b>5</b> AI Behavior</span>
-      </div>
+        <nav class="tab-navigation" role="tablist" aria-label="QA workspaces">
+          <button id="tab-chat" class="workspace-tab" type="button" role="tab" aria-controls="panel-chat" aria-selected="true">Chat</button>
+          <button id="tab-simulator" class="workspace-tab" type="button" role="tab" aria-controls="panel-simulator" aria-selected="false" tabindex="-1">AI Simulator</button>
+          <button id="tab-replay" class="workspace-tab" type="button" role="tab" aria-controls="panel-replay" aria-selected="false" tabindex="-1">Replay</button>
+          <button id="tab-regression" class="workspace-tab" type="button" role="tab" aria-controls="panel-regression" aria-selected="false" tabindex="-1">Regression</button>
+          <button id="tab-scenarios" class="workspace-tab" type="button" role="tab" aria-controls="panel-scenarios" aria-selected="false" tabindex="-1">Scenarios</button>
+          <button id="tab-debug" class="workspace-tab" type="button" role="tab" aria-controls="panel-debug" aria-selected="false" tabindex="-1">Debug</button>
+        </nav>
 
-      <main class="workspace">
-        <div class="chat-column">
+        <main class="workspace tab-workspaces">
+          <section id="panel-chat" class="workspace-panel" role="tabpanel" aria-labelledby="tab-chat"></section>
+          <section id="panel-simulator" class="workspace-panel" role="tabpanel" aria-labelledby="tab-simulator" hidden></section>
+          <section id="panel-replay" class="workspace-panel" role="tabpanel" aria-labelledby="tab-replay" hidden></section>
+          <section id="panel-regression" class="workspace-panel" role="tabpanel" aria-labelledby="tab-regression" hidden></section>
+          <section id="panel-scenarios" class="workspace-panel" role="tabpanel" aria-labelledby="tab-scenarios" hidden></section>
+          <section id="panel-debug" class="workspace-panel" role="tabpanel" aria-labelledby="tab-debug" hidden></section>
+        <div id="legacy-workspace-content" class="legacy-workspace-content">
           <section id="setup-section" class="control-panel panel" aria-labelledby="setup-title">
             <div class="panel-heading">
               <div>
@@ -310,6 +291,7 @@
                 <button id="start-simulator" class="primary-button" type="button" disabled>Start</button>
                 <button id="pause-simulator" class="secondary-button" type="button" disabled>Pause</button>
                 <button id="stop-simulator" class="secondary-button" type="button" disabled>Stop</button>
+                <button id="copy-simulator-chat" class="secondary-button" type="button" disabled>Copy chat</button>
               </div>
               <div id="simulator-summary" class="simulator-summary empty-debug-value" aria-live="polite">Not run</div>
             </section>
@@ -339,6 +321,7 @@
                 <p class="section-kicker">Conversation</p>
                 <h2 id="chat-title">Chatbot</h2>
               </div>
+              <button id="copy-chat" class="secondary-button copy-chat-button" type="button" disabled>Copy chat</button>
               <span id="connection-state" class="connection-state">Sẵn sàng</span>
             </div>
 
