@@ -878,7 +878,7 @@
   }
 
   function shouldShowIcebreakers() {
-    return state.channelMode === "messenger" &&
+    return ["website", "messenger"].includes(state.channelMode) &&
       !hasConversationStarted() &&
       !isReplayLocked() &&
       !isSimulatorLocked() &&
