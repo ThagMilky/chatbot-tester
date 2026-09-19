@@ -858,8 +858,8 @@
     void sendMessage(message, option.label, { selectedOption: option });
   }
 
-  function getConfiguredIcebreakers(bot) {
-    const settings = getChannelSettings(bot, "messenger");
+  function getConfiguredIcebreakers(bot, channelMode) {
+    const settings = getChannelSettings(bot, channelMode);
     if (!Array.isArray(settings.icebreakers)) return [];
     return settings.icebreakers.map(function (option) {
       if (!isObject(option)) return null;
@@ -882,13 +882,13 @@
       !isReplayLocked() &&
       !isSimulatorLocked() &&
       !state.scenario.running &&
-      getConfiguredIcebreakers(state.selectedBot).length > 0;
+      getConfiguredIcebreakers(state.selectedBot, state.channelMode).length > 0;
   }
 
   function renderIcebreakers() {
     if (!elements.icebreakers) return;
     elements.icebreakers.replaceChildren();
-    const options = getConfiguredIcebreakers(state.selectedBot);
+    const options = getConfiguredIcebreakers(state.selectedBot, state.channelMode);
     const visible = shouldShowIcebreakers();
     elements.icebreakers.hidden = !visible;
     if (!visible) return;

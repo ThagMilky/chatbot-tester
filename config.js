@@ -10,6 +10,13 @@ window.CHATBOT_CONFIG = [
     channels: {
       website: {
         requestChannel: "chat-test",
+        icebreakers: [
+          { label: "Tư vấn website", payload: "icebreaker:website_new" },
+          { label: "Thiết kế lại website", payload: "icebreaker:website_redesign" },
+          { label: "SEO website", payload: "icebreaker:seo" },
+          { label: "Tối ưu chuyển đổi", payload: "icebreaker:conversion_optimization" },
+          { label: "Bảo trì website", payload: "icebreaker:maintenance" },
+        ],
       },
       messenger: {
         requestChannel: "messenger",
