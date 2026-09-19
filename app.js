@@ -864,9 +864,10 @@
     return settings.icebreakers.map(function (option) {
       if (!isObject(option)) return null;
       const label = typeof option.label === "string" ? option.label.trim() : "";
+      const message = typeof option.message === "string" ? option.message.trim() : label;
       const payload = firstValue(option.payload, option.id, option.value, option.sendValue);
-      if (!label || payload === undefined || payload === null || payload === "") return null;
-      return { label: label, payload: String(payload) };
+      if (!label || !message || payload === undefined || payload === null || payload === "") return null;
+      return { label: label, message: message, payload: String(payload) };
     }).filter(Boolean);
   }
 
@@ -902,7 +903,7 @@
         if (!shouldShowIcebreakers()) return;
         state.senderMode = "client";
         updateChannelDisplay();
-        void sendMessage(option.label, option.label, { selectedOption: option });
+        void sendMessage(option.message, option.label, { selectedOption: option });
       });
       elements.icebreakers.appendChild(button);
     });
