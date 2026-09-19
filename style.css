@@ -3160,6 +3160,24 @@ body {
   margin-left: auto;
 }
 
+.chat-icebreakers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  padding: 10px 20px 12px;
+  border-top: 1px solid var(--line);
+  background: var(--page);
+}
+
+.chat-icebreakers[hidden] {
+  display: none;
+}
+
+.chat-icebreakers .icebreaker-option {
+  max-width: 100%;
+  text-align: left;
+}
+
 .message-row.ai-client .message-bubble {
   color: #fff;
   background: var(--accent-dark);

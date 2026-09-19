@@ -330,6 +330,7 @@
     connectionState: document.getElementById("connection-state"),
     messages: document.getElementById("chat-messages"),
     emptyState: document.getElementById("empty-state"),
+    icebreakers: document.getElementById("chat-icebreakers"),
     form: document.getElementById("chat-form"),
     messageInput: document.getElementById("message-input"),
     sendButton: document.getElementById("send-button"),
@@ -857,6 +858,56 @@
     void sendMessage(message, option.label, { selectedOption: option });
   }
 
+  function getConfiguredIcebreakers(bot) {
+    const settings = getChannelSettings(bot, "messenger");
+    if (!Array.isArray(settings.icebreakers)) return [];
+    return settings.icebreakers.map(function (option) {
+      if (!isObject(option)) return null;
+      const label = typeof option.label === "string" ? option.label.trim() : "";
+      const payload = firstValue(option.payload, option.id, option.value, option.sendValue);
+      if (!label || payload === undefined || payload === null || payload === "") return null;
+      return { label: label, payload: String(payload) };
+    }).filter(Boolean);
+  }
+
+  function hasConversationStarted() {
+    return state.turns.length > 0 || state.messages.some(function (message) {
+      return ["user", "staff", "ai-client", "bot"].includes(message.type);
+    });
+  }
+
+  function shouldShowIcebreakers() {
+    return state.channelMode === "messenger" &&
+      !hasConversationStarted() &&
+      !isReplayLocked() &&
+      !isSimulatorLocked() &&
+      !state.scenario.running &&
+      getConfiguredIcebreakers(state.selectedBot).length > 0;
+  }
+
+  function renderIcebreakers() {
+    if (!elements.icebreakers) return;
+    elements.icebreakers.replaceChildren();
+    const options = getConfiguredIcebreakers(state.selectedBot);
+    const visible = shouldShowIcebreakers();
+    elements.icebreakers.hidden = !visible;
+    if (!visible) return;
+
+    options.forEach(function (option) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "suggested-option icebreaker-option";
+      button.textContent = option.label;
+      button.addEventListener("click", function () {
+        if (!shouldShowIcebreakers()) return;
+        state.senderMode = "client";
+        updateChannelDisplay();
+        void sendMessage(option.label, option.label, { selectedOption: option });
+      });
+      elements.icebreakers.appendChild(button);
+    });
+  }
+
   function clearSuggestedOptions() {
     state.messages.forEach(function (message) {
       if (Array.isArray(message.options)) {
@@ -1122,6 +1173,7 @@
   function renderMessages(shouldScroll) {
     elements.messages.replaceChildren();
     updateCopyChatControls();
+    renderIcebreakers();
 
     if (!state.messages.length) {
       elements.messages.appendChild(elements.emptyState);
