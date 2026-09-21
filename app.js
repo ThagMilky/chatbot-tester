@@ -208,6 +208,17 @@
     throw new Error('Response Cyno không có trường "text" hoặc "reply" dạng chuỗi.');
   }
 
+  function parseCynoReplyParts(bot, response, parsedReply) {
+    const fallback = typeof parsedReply === "string" ? parsedReply : parseCynoResponse(bot, response);
+    const rawParts = response && response.replyParts;
+    if (!Array.isArray(rawParts) || rawParts.length === 0 || rawParts.length > 2 ||
+      rawParts.some(function (part) { return typeof part !== "string" || part.trim() === ""; })) {
+      return [fallback];
+    }
+
+    return rawParts.slice();
+  }
+
   // Default normalized debug contract. Per-bot mapping can be added here without changing UI code.
   function parseDebug(bot, response) {
     const source = response && isObject(response.debug) ? response.debug : {};
@@ -251,6 +262,7 @@
       buildRequest: buildCynoRequest,
       buildFetchOptions: buildFetchOptions,
       parseResponse: parseCynoResponse,
+      parseReplyParts: parseCynoReplyParts,
       parseSuggestedOptions: parseCynoSuggestedOptions,
       parseDebug: parseDebug,
     },
@@ -2243,7 +2255,13 @@
         );
       } else {
         parsedReply = adapter.parseResponse(bot, rawResponse);
-        addMessage("bot", parsedReply, adapter.parseSuggestedOptions(bot, rawResponse, requestContext), turn.id);
+        const replyParts = typeof adapter.parseReplyParts === "function"
+          ? adapter.parseReplyParts(bot, rawResponse, parsedReply)
+          : [parsedReply];
+        const suggestedOptions = adapter.parseSuggestedOptions(bot, rawResponse, requestContext);
+        replyParts.forEach(function (replyPart, index) {
+          addMessage("bot", replyPart, index === replyParts.length - 1 ? suggestedOptions : [], turn.id);
+        });
       }
     } catch (error) {
       errorMessage = formatRequestError(error, failureType, status, timeoutMs);

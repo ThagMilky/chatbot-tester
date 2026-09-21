@@ -141,7 +141,7 @@ Mở `config.js` và thêm một object vào `CHATBOT_CONFIG`:
 
 Bot có `enabled: false` sẽ không xuất hiện trong selector. Thêm bot chỉ cần sửa config, không cần sửa UI. `testMode` là cấu hình generic; nếu API dùng flag/header khác, chỉnh object này hoặc adapter.
 
-Config sẵn có cho `Cyno Software` đã trỏ tới `http://localhost:3000/api/chat` và dùng adapter `cyno-software`. Adapter này đọc response hiện tại của Cyno dạng `{ "type": "text", "text": "..." }`, đồng thời fallback về `{ "reply": "..." }`.
+Config sẵn có cho `Cyno Software` đã trỏ tới `http://localhost:3000/api/chat` và dùng adapter `cyno-software`. Adapter này đọc response hiện tại của Cyno dạng `{ "type": "text", "text": "..." }`, đồng thời fallback về `{ "reply": "..." }`. Với Cyno V2, nếu có `replyParts` hợp lệ (tối đa 2 phần), tester hiển thị thành các bubble riêng trong cùng một turn; nếu thiếu hoặc không hợp lệ, tester dùng `reply` như cũ.
 
 ## API adapter
 
@@ -150,6 +150,7 @@ Các điểm kết nối chính nằm trong `app.js`:
 - `buildRequest(bot, message, sessionId)`: map request payload và thêm test-mode body flag nếu bot bật dry-run.
 - `buildFetchOptions(bot, requestPayload, controller)`: map method, headers, timeout và test-mode headers.
 - `parseResponse(bot, response)`: map response về reply text.
+- `parseReplyParts(bot, response, parsedReply)`: normalize các phần hiển thị tùy adapter; Cyno V2 fallback về một phần từ `reply` để giữ tương thích.
 - `parseSuggestedOptions(bot, response)`: normalize suggested options/quick replies cho UI; adapter Cyno hiển thị `label` và gửi `value` qua `/api/chat` vì endpoint website hiện chỉ nhận text, không nhận `quickReplyPayload`; raw response vẫn giữ `id/value` để debug.
 - `parseDebug(bot, response)`: normalize debug backend về format UI dùng.
 
