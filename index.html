@@ -41,6 +41,7 @@
               <button id="tab-regression" class="workspace-tab" type="button" role="tab" aria-controls="panel-regression" aria-selected="false" tabindex="-1">Regression</button>
               <button id="tab-scenarios" class="workspace-tab" type="button" role="tab" aria-controls="panel-scenarios" aria-selected="false" tabindex="-1">Scenarios</button>
               <button id="tab-debug" class="workspace-tab" type="button" role="tab" aria-controls="panel-debug" aria-selected="false" tabindex="-1">Debug</button>
+              <button id="tab-history" class="workspace-tab" type="button" role="tab" aria-controls="panel-history" aria-selected="false" tabindex="-1">History</button>
             </nav>
 
             <div class="topbar-context" aria-live="polite">
@@ -65,6 +66,33 @@
           <section id="panel-regression" class="workspace-panel" role="tabpanel" aria-labelledby="tab-regression" hidden></section>
           <section id="panel-scenarios" class="workspace-panel" role="tabpanel" aria-labelledby="tab-scenarios" hidden></section>
           <section id="panel-debug" class="workspace-panel" role="tabpanel" aria-labelledby="tab-debug" hidden></section>
+          <section id="panel-history" class="workspace-panel" role="tabpanel" aria-labelledby="tab-history" hidden>
+            <section id="history-workspace" class="tool-section history-workspace" aria-labelledby="history-title">
+              <div class="tool-heading">
+                <div>
+                  <p class="section-kicker">Local only</p>
+                  <h2 id="history-title">Recent Chat History</h2>
+                </div>
+                <button id="clear-history" class="secondary-button" type="button" disabled>Clear history</button>
+              </div>
+              <p class="field-hint">Saved in this browser only. History is read-only and never resumes an old backend session.</p>
+              <div id="history-empty" class="history-empty empty-debug-value">No saved conversations yet.</div>
+              <div id="history-list" class="history-list" aria-live="polite"></div>
+              <article id="history-viewer" class="history-viewer" aria-labelledby="history-viewer-title" hidden>
+                <div class="tool-heading history-viewer-heading">
+                  <div>
+                    <p class="section-kicker">Read-only transcript</p>
+                    <h3 id="history-viewer-title">Conversation</h3>
+                  </div>
+                  <button id="close-history-viewer" class="secondary-button" type="button">Close</button>
+                </div>
+                <div class="history-viewer-actions">
+                  <button id="copy-history-viewer" class="secondary-button" type="button">Copy chat</button>
+                </div>
+                <pre id="history-transcript" class="history-transcript"></pre>
+              </article>
+            </section>
+          </section>
         <div id="legacy-workspace-content" class="legacy-workspace-content">
           <section id="setup-section" class="control-panel panel" aria-labelledby="setup-title">
             <div class="panel-heading">
@@ -525,6 +553,7 @@
     <script src="conversation-parser.js"></script>
     <script src="replay-helpers.js"></script>
     <script src="regression-helpers.js"></script>
+    <script src="history.js"></script>
     <script src="app.js"></script>
   </body>
 </html>

@@ -3193,6 +3193,121 @@ body {
   min-height: 100%;
 }
 
+.history-workspace {
+  padding: 22px;
+}
+
+.history-workspace > .tool-heading {
+  align-items: flex-start;
+}
+
+.history-workspace > .field-hint {
+  max-width: 760px;
+  margin-bottom: 18px;
+}
+
+.history-list {
+  display: grid;
+  gap: 10px;
+}
+
+.history-entry {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  background: var(--panel);
+}
+
+.history-entry-content {
+  min-width: 0;
+}
+
+.history-entry-title {
+  margin: 0;
+  color: var(--ink);
+  font-size: 0.92rem;
+  font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-entry-meta {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 0.76rem;
+  line-height: 1.45;
+}
+
+.history-entry-actions,
+.history-viewer-actions {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.history-delete-button {
+  color: var(--danger, #a23a2a);
+}
+
+.history-empty {
+  padding: 28px 18px;
+  border: 1px dashed var(--line);
+  border-radius: 13px;
+  text-align: center;
+}
+
+.history-empty[hidden],
+.history-viewer[hidden] {
+  display: none;
+}
+
+.history-viewer {
+  margin-top: 22px;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--page);
+}
+
+.history-viewer-heading {
+  margin-bottom: 12px;
+}
+
+.history-transcript {
+  max-height: 520px;
+  margin: 14px 0 0;
+  padding: 15px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--muted);
+  background: var(--panel);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 640px) {
+  .history-workspace {
+    padding: 16px;
+  }
+
+  .history-entry {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .history-entry-actions .secondary-button {
+    flex: 1 1 auto;
+  }
+}
+
 #panel-debug .debug-panel {
   position: static;
   max-height: none;

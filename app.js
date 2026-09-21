@@ -263,6 +263,14 @@
   const elements = {
     workspaceTabs: Array.prototype.slice.call(document.querySelectorAll(".workspace-tab")),
     workspacePanels: Array.prototype.slice.call(document.querySelectorAll(".workspace-panel")),
+    historyList: document.getElementById("history-list"),
+    historyEmpty: document.getElementById("history-empty"),
+    clearHistory: document.getElementById("clear-history"),
+    historyViewer: document.getElementById("history-viewer"),
+    historyViewerTitle: document.getElementById("history-viewer-title"),
+    closeHistoryViewer: document.getElementById("close-history-viewer"),
+    copyHistoryViewer: document.getElementById("copy-history-viewer"),
+    historyTranscript: document.getElementById("history-transcript"),
     globalControls: document.getElementById("global-controls"),
     themeToggle: document.getElementById("theme-toggle"),
     headerBotContext: document.getElementById("header-bot-context"),
@@ -451,6 +459,7 @@
     sessionId: createSessionId(),
     messages: [],
     turns: [],
+    historyViewerId: null,
     selectedTurnId: null,
     nextTurnNumber: 1,
     isSending: false,
@@ -533,6 +542,60 @@
         : Math.random().toString(36).slice(2, 10);
 
     return "test-" + Date.now().toString(36) + "-" + randomPart;
+  }
+
+  const historyStore = window.ChatbotTesterHistory || null;
+
+  function getHistoryStorage() {
+    try {
+      return window.localStorage;
+    } catch (error) {
+      return null;
+    }
+  }
+
+  function messagesMatch(left, right) {
+    return left && right && left.type === right.type && left.text === right.text;
+  }
+
+  function mergeHistoryMessages(existingMessages, currentMessages) {
+    const existing = Array.isArray(existingMessages) ? existingMessages : [];
+    const current = Array.isArray(currentMessages) ? currentMessages : [];
+    if (!existing.length) return current;
+
+    const currentContainsExisting = current.length >= existing.length && existing.every(function (message, index) {
+      return messagesMatch(message, current[index]);
+    });
+
+    return currentContainsExisting ? current : existing.concat(current);
+  }
+
+  function saveCurrentConversationToHistory() {
+    if (!historyStore || !state.messages.length) return;
+
+    const storage = getHistoryStorage();
+    const existing = historyStore.load(storage).find(function (record) {
+      return record.sessionId === state.sessionId;
+    });
+    const now = new Date().toISOString();
+    const messages = state.messages.map(function (message) {
+      return {
+        type: message.type,
+        text: String(message.text),
+      };
+    });
+
+    historyStore.upsert({
+      id: existing ? existing.id : historyStore.createHistoryId(),
+      sessionId: state.sessionId,
+      botId: state.selectedBot && state.selectedBot.id ? state.selectedBot.id : null,
+      botName: state.selectedBot && state.selectedBot.name ? state.selectedBot.name : "Unknown bot",
+      channelMode: state.channelMode,
+      createdAt: existing ? existing.createdAt : now,
+      updatedAt: now,
+      turnCount: state.turns.length,
+      messages: mergeHistoryMessages(existing && existing.messages, messages),
+    }, storage);
   }
 
   function createRequestId() {
@@ -1132,6 +1195,161 @@
     void copyText(formatConversationTranscript(), "Conversation copied.");
   }
 
+  function formatHistoryChannel(channelMode) {
+    return channelMode === "messenger" ? "Messenger" : "Website";
+  }
+
+  function formatHistoryDate(timestamp) {
+    const date = new Date(timestamp);
+    if (Number.isNaN(date.getTime())) return "Unknown date";
+
+    return date.toLocaleString("vi-VN", {
+      dateStyle: "medium",
+      timeStyle: "short",
+    });
+  }
+
+  function getHistoryPreview(record) {
+    const firstClientMessage = record.messages.find(function (message) {
+      return ["user", "staff", "ai-client"].includes(message.type);
+    });
+    const text = firstClientMessage ? firstClientMessage.text : record.messages[0].text;
+    const preview = String(text).replace(/\s+/g, " ").trim();
+    return preview.length > 110 ? preview.slice(0, 107) + "..." : preview;
+  }
+
+  function formatHistoryTranscript(record) {
+    const lines = [
+      "Session: " + record.sessionId,
+      "Bot: " + (record.botName || "Unknown bot"),
+      "Channel: " + formatHistoryChannel(record.channelMode),
+      "Date: " + formatHistoryDate(record.updatedAt || record.createdAt),
+      "",
+    ];
+
+    record.messages.forEach(function (message) {
+      lines.push(getConversationRole(message) + ":", String(message.text), "");
+    });
+
+    return lines.join("\n").trim();
+  }
+
+  function closeHistoryViewer() {
+    state.historyViewerId = null;
+    if (elements.historyViewer) elements.historyViewer.hidden = true;
+    if (elements.historyTranscript) elements.historyTranscript.textContent = "";
+  }
+
+  function openHistoryRecord(historyId) {
+    if (!historyStore) return;
+
+    const record = historyStore.getById(historyId, getHistoryStorage());
+    if (!record) {
+      showToast("History entry không còn tồn tại.");
+      renderHistoryList();
+      return;
+    }
+
+    state.historyViewerId = record.id;
+    elements.historyViewer.hidden = false;
+    elements.historyViewerTitle.textContent = record.botName || "Conversation";
+    elements.historyTranscript.textContent = formatHistoryTranscript(record);
+    elements.copyHistoryViewer.disabled = false;
+  }
+
+  function renderHistoryList() {
+    if (!historyStore || !elements.historyList) return;
+
+    const records = historyStore.load(getHistoryStorage());
+    elements.historyList.replaceChildren();
+    elements.historyEmpty.hidden = records.length > 0;
+    elements.clearHistory.disabled = records.length === 0;
+
+    records.forEach(function (record) {
+      const entry = document.createElement("article");
+      entry.className = "history-entry";
+
+      const content = document.createElement("div");
+      content.className = "history-entry-content";
+
+      const title = document.createElement("h3");
+      title.className = "history-entry-title";
+      title.textContent = getHistoryPreview(record);
+
+      const meta = document.createElement("p");
+      meta.className = "history-entry-meta";
+      meta.textContent = [
+        formatHistoryDate(record.updatedAt),
+        record.botName || "Unknown bot",
+        formatHistoryChannel(record.channelMode),
+        record.messages.length + " messages",
+        record.turnCount + " turns",
+      ].join(" · ");
+
+      content.append(title, meta);
+
+      const actions = document.createElement("div");
+      actions.className = "history-entry-actions";
+
+      const openButton = document.createElement("button");
+      openButton.type = "button";
+      openButton.className = "secondary-button";
+      openButton.textContent = "Open";
+      openButton.addEventListener("click", function () {
+        openHistoryRecord(record.id);
+      });
+
+      const copyButton = document.createElement("button");
+      copyButton.type = "button";
+      copyButton.className = "secondary-button";
+      copyButton.textContent = "Copy chat";
+      copyButton.addEventListener("click", function () {
+        void copyText(formatHistoryTranscript(record), "History chat copied.");
+      });
+
+      const deleteButton = document.createElement("button");
+      deleteButton.type = "button";
+      deleteButton.className = "secondary-button history-delete-button";
+      deleteButton.textContent = "Delete";
+      deleteButton.addEventListener("click", function () {
+        deleteHistoryRecord(record.id);
+      });
+
+      actions.append(openButton, copyButton, deleteButton);
+      entry.append(content, actions);
+      elements.historyList.appendChild(entry);
+    });
+
+    if (state.historyViewerId) {
+      const selected = historyStore.getById(state.historyViewerId, getHistoryStorage());
+      if (selected) {
+        elements.historyViewerTitle.textContent = selected.botName || "Conversation";
+        elements.historyTranscript.textContent = formatHistoryTranscript(selected);
+      } else {
+        closeHistoryViewer();
+      }
+    }
+  }
+
+  function deleteHistoryRecord(historyId) {
+    if (!historyStore) return;
+
+    historyStore.remove(historyId, getHistoryStorage());
+    if (state.historyViewerId === historyId) closeHistoryViewer();
+    renderHistoryList();
+    showToast("History entry deleted.");
+  }
+
+  function clearHistory() {
+    if (!historyStore || !historyStore.load(getHistoryStorage()).length) return;
+    if (!window.confirm("Xóa toàn bộ recent chat history trong trình duyệt này?")) return;
+
+    historyStore.clear(getHistoryStorage());
+    closeHistoryViewer();
+    renderHistoryList();
+    showToast("History cleared.");
+  }
+
   function copyTurnRequest(turn) {
     if (!turn || !turn.request) {
       showToast("Turn này chưa có request để copy.");
@@ -1292,6 +1510,8 @@
       turnId: turnId || null,
     });
     renderMessages();
+    saveCurrentConversationToHistory();
+    renderHistoryList();
   }
 
   function getImportBotNames() {
@@ -3009,6 +3229,7 @@
   }
 
   function resetConversationData() {
+    saveCurrentConversationToHistory();
     invalidateScenarioEvaluation();
     state.sessionId = createSessionId();
     state.messages = [];
@@ -3184,9 +3405,11 @@
 
   function clearChat() {
     if (isReplayLocked() || isSimulatorLocked()) return;
+    saveCurrentConversationToHistory();
     invalidateScenarioEvaluation();
     state.messages = [];
     renderMessages();
+    renderHistoryList();
     updateScenarioControls();
     showToast("Đã clear chat. Session ID được giữ nguyên.");
     elements.messageInput.focus();
@@ -3371,6 +3594,15 @@
   });
   if (elements.copyChat) elements.copyChat.addEventListener("click", copyConversation);
   if (elements.copySimulatorChat) elements.copySimulatorChat.addEventListener("click", copyConversation);
+  if (elements.clearHistory) elements.clearHistory.addEventListener("click", clearHistory);
+  if (elements.closeHistoryViewer) elements.closeHistoryViewer.addEventListener("click", closeHistoryViewer);
+  if (elements.copyHistoryViewer) {
+    elements.copyHistoryViewer.addEventListener("click", function () {
+      if (!historyStore || !state.historyViewerId) return;
+      const record = historyStore.getById(state.historyViewerId, getHistoryStorage());
+      if (record) void copyText(formatHistoryTranscript(record), "History chat copied.");
+    });
+  }
   if (elements.scanConversation) {
     elements.scanConversation.addEventListener("click", scanConversation);
   }
@@ -3392,6 +3624,7 @@
   updateReplayControls();
   updateSimulatorControls();
   resetDebug();
+  renderHistoryList();
   renderRegressionDraft();
   void loadSimulatorCatalog();
 })();
