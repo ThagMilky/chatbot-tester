@@ -65,6 +65,18 @@ window.CHATBOT_CONFIG = [
           { label: "Bảo trì Website", message: "Tôi muốn tư vấn bảo trì Website", payload: "icebreaker:maintenance" },
         ],
       },
+      messenger: {
+        requestChannel: "messenger",
+        quickReplyPayloadField: "quickReplyPayload",
+        quickReplyPayloadValueField: "id",
+        icebreakers: [
+          { label: "Tư vấn Website", message: "Tôi muốn tư vấn Website", payload: "icebreaker:website" },
+          { label: "Thiết kế lại Website", message: "Tôi muốn thiết kế lại Website", payload: "icebreaker:website_redesign" },
+          { label: "SEO Website", message: "Tôi muốn tư vấn SEO Website", payload: "icebreaker:seo" },
+          { label: "Tối ưu chuyển đổi", message: "Tôi muốn tối ưu chuyển đổi", payload: "icebreaker:conversion_optimization" },
+          { label: "Bảo trì Website", message: "Tôi muốn tư vấn bảo trì Website", payload: "icebreaker:maintenance" },
+        ],
+      },
     },
   },
   {
