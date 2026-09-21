@@ -857,7 +857,9 @@
       elements.botSelect.appendChild(option);
     });
 
-    state.selectedBot = state.bots[0];
+    state.selectedBot = state.bots.find(function (bot) {
+      return bot.id === "cyno-v2";
+    }) || state.bots[0];
     elements.botSelect.value = state.selectedBot.id;
     updateBotDisplay();
   }
