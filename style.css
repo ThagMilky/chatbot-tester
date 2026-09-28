@@ -3272,8 +3272,14 @@ body {
 }
 
 .messenger-case-card input,
-.messenger-case-card textarea {
+.messenger-case-card textarea,
+.messenger-case-card select {
   width: 100%;
+}
+
+.messenger-case-field {
+  display: grid;
+  gap: 9px;
 }
 
 .messenger-case-card textarea {

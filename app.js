@@ -477,6 +477,7 @@
     selectedTurnId: null,
     nextTurnNumber: 1,
     isSending: false,
+    libraryJourneyRunning: false,
     activeRequestCount: 0,
     channelMode: "website",
     senderMode: "client",
@@ -629,11 +630,11 @@
   }
 
   function isManualChatLocked() {
-    return isReplayLocked() || isSimulatorLocked() || (state.isSending && !state.edgeTestMode);
+    return isReplayLocked() || isSimulatorLocked() || state.libraryJourneyRunning || (state.isSending && !state.edgeTestMode);
   }
 
   function isManualSenderLocked() {
-    return isReplayLocked() || isSimulatorLocked();
+    return isReplayLocked() || isSimulatorLocked() || state.libraryJourneyRunning;
   }
 
   function isRequestBlocked(sendOptions) {
@@ -653,7 +654,8 @@
       blockedByReplayOrSending = (replayLocked && !isReplayRequest) || (state.isSending && !state.edgeTestMode);
     }
 
-    return blockedByReplayOrSending || (simulatorLocked && !isSimulatorRequest);
+    const blockedByLibraryJourney = state.libraryJourneyRunning && !(sendOptions && sendOptions.libraryJourney === true);
+    return blockedByReplayOrSending || (simulatorLocked && !isSimulatorRequest) || blockedByLibraryJourney;
   }
 
   function getBotApiUrl(bot) {
@@ -898,14 +900,14 @@
       elements.sendButton.disabled = lockInput || !getStaffApiUrl(state.selectedBot);
     }
     elements.messageInput.disabled = lockInput;
-    elements.botSelect.disabled = state.isSending || isReplayLocked() || simulatorLocked || !state.bots.length;
-    elements.newConversation.disabled = state.isSending || isReplayLocked() || simulatorLocked;
-    elements.clearChat.disabled = state.isSending || isReplayLocked() || simulatorLocked;
+    elements.botSelect.disabled = state.isSending || isReplayLocked() || simulatorLocked || state.libraryJourneyRunning || !state.bots.length;
+    elements.newConversation.disabled = state.isSending || isReplayLocked() || simulatorLocked || state.libraryJourneyRunning;
+    elements.clearChat.disabled = state.isSending || isReplayLocked() || simulatorLocked || state.libraryJourneyRunning;
     if (elements.continueHistoryViewer) {
       elements.continueHistoryViewer.disabled = !state.historyViewerId || state.isSending || isReplayLocked() || simulatorLocked;
     }
-    if (elements.channelMode) elements.channelMode.disabled = state.isSending || isReplayLocked() || simulatorLocked;
-    if (elements.edgeTestMode) elements.edgeTestMode.disabled = state.isSending || isReplayLocked() || simulatorLocked;
+    if (elements.channelMode) elements.channelMode.disabled = state.isSending || isReplayLocked() || simulatorLocked || state.libraryJourneyRunning;
+    if (elements.edgeTestMode) elements.edgeTestMode.disabled = state.isSending || isReplayLocked() || simulatorLocked || state.libraryJourneyRunning;
     elements.sendButton.classList.toggle("loading", state.isSending);
     elements.sendLabel.textContent = state.isSending
       ? state.edgeTestMode && state.activeRequestCount > 1
@@ -1566,6 +1568,21 @@
           });
           actions.appendChild(duplicate);
         }
+        row.appendChild(actions);
+      }
+
+      if (message.type === "bot") {
+        const actions = document.createElement("div");
+        actions.className = "message-actions";
+        const copyReply = document.createElement("button");
+        copyReply.type = "button";
+        copyReply.className = "message-action";
+        copyReply.textContent = "Copy";
+        copyReply.setAttribute("aria-label", "Copy this bot reply");
+        copyReply.addEventListener("click", function () {
+          void copyText(message.text, "Đã copy câu trả lời của bot.");
+        });
+        actions.appendChild(copyReply);
         row.appendChild(actions);
       }
 
@@ -3496,7 +3513,7 @@
   }
 
   function startNewConversation() {
-    if (state.scenario.running || isReplayLocked() || isSimulatorLocked()) return;
+    if (state.scenario.running || isReplayLocked() || isSimulatorLocked() || state.libraryJourneyRunning) return;
     state.scenario = {
       running: false,
       scenarioId: state.scenario.scenarioId,
@@ -3517,7 +3534,7 @@
   }
 
   function clearChat() {
-    if (isReplayLocked() || isSimulatorLocked()) return;
+    if (isReplayLocked() || isSimulatorLocked() || state.libraryJourneyRunning) return;
     saveCurrentConversationToHistory();
     invalidateScenarioEvaluation();
     state.messages = [];
@@ -3540,6 +3557,10 @@
   }
 
   elements.botSelect.addEventListener("change", function (event) {
+    if (state.libraryJourneyRunning) {
+      elements.botSelect.value = state.selectedBot && state.selectedBot.id ? state.selectedBot.id : "";
+      return;
+    }
     invalidateScenarioEvaluation();
     state.selectedBot = state.bots.find(function (bot) {
       return bot.id === event.target.value;
@@ -3557,6 +3578,10 @@
   });
   if (elements.channelMode) {
     elements.channelMode.addEventListener("change", function (event) {
+      if (state.libraryJourneyRunning) {
+        elements.channelMode.value = state.channelMode;
+        return;
+      }
       invalidateScenarioEvaluation();
       state.channelMode = event.target.value === "messenger" ? "messenger" : "website";
       if (state.channelMode !== "messenger") state.senderMode = "client";
@@ -3568,6 +3593,10 @@
   if (elements.senderModeInputs) {
     elements.senderModeInputs.forEach(function (input) {
       input.addEventListener("change", function (event) {
+        if (state.libraryJourneyRunning) {
+          input.checked = (input.value === state.senderMode);
+          return;
+        }
         if (state.channelMode !== "messenger" || isManualSenderLocked()) return;
         state.senderMode = event.target.value === "staff" ? "staff" : "client";
         updateLoadingControls();
@@ -3677,11 +3706,29 @@
     event.preventDefault();
     void sendMessage();
   });
-  window.addEventListener("chatbotTester:runLibraryCase", function (event) {
+  window.addEventListener("chatbotTester:runLibraryCase", async function (event) {
     const testCase = event.detail || {};
     const question = typeof testCase.question === "string" ? testCase.question.trim() : "";
+    if (state.isSending || state.scenario.running || isReplayLocked() || isSimulatorLocked() || state.libraryJourneyRunning) {
+      showToast("Wait for the current chat, replay, or simulation to finish before running this case.");
+      return;
+    }
     if (!question || !state.selectedBot || !getBotApiUrl(state.selectedBot)) {
       showToast("Chọn chatbot có API trước khi chạy ca test.");
+      return;
+    }
+    const caseType = testCase.caseType === "journey" ? "journey" : "single";
+    const explicitSeeds = Array.isArray(testCase.clientMessages)
+      ? testCase.clientMessages.map(function (message) { return typeof message === "string" ? message.trim() : ""; }).filter(Boolean)
+      : [];
+    const clientContextMessages = Array.isArray(testCase.clientContextMessages)
+      ? testCase.clientContextMessages.map(function (message) { return typeof message === "string" ? message.trim() : ""; }).filter(Boolean)
+      : String(testCase.context || "").split(/\n(?=(?:Page|Client): )/u).filter(function (part) { return part.startsWith("Client: "); }).map(function (part) { return part.slice("Client: ".length).trim(); }).filter(Boolean);
+    const clientMessages = caseType === "journey"
+      ? (explicitSeeds.length ? explicitSeeds : [question])
+      : [...clientContextMessages, question];
+    if (!clientMessages.length) {
+      showToast("Add at least one client message before running this case.");
       return;
     }
     const channel = testCase.channel === "messenger" ? "messenger" : "website";
@@ -3692,6 +3739,8 @@
     state.senderMode = "client";
     updateChannelDisplay();
     startNewConversation();
+    state.libraryJourneyRunning = true;
+    updateLoadingControls();
 
     const referencePanel = document.getElementById("reference-answer-panel");
     const referenceText = document.getElementById("reference-answer-text");
@@ -3702,8 +3751,18 @@
       if (referenceTitle) referenceTitle.textContent = testCase.category || "Trả lời từ Page";
     }
     setActiveWorkspace("tab-chat");
-    elements.messageInput.value = question;
-    elements.form.requestSubmit();
+    try {
+      for (let index = 0; index < clientMessages.length; index += 1) {
+        const turn = await sendMessage(clientMessages[index], clientMessages[index], { senderMode: "client", libraryJourney: true });
+        if (!turn || turn.error) {
+          if (clientMessages.length > 1) showToast("Journey stopped after client message " + (index + 1) + " because the bot request failed.");
+          return;
+        }
+      }
+    } finally {
+      state.libraryJourneyRunning = false;
+      updateLoadingControls();
+    }
   });
   elements.messageInput.addEventListener("keydown", function (event) {
     if (event.key === "Enter" && !event.shiftKey) {

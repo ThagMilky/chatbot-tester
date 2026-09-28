@@ -178,8 +178,10 @@
           break;
         }
       }
-      const priorContext = turns.slice(Math.max(0, index - 2), index).map((item) => (item.role === "page" ? "Page: " : "Client: ") + item.text).join("\n");
-      pairs.push({ question: turn.text, clientMessageId: turn.ids[0], pageReply: response ? response.text : "", pageMessageId: response ? response.ids[0] : "", context: priorContext });
+      const priorTurns = turns.slice(Math.max(0, index - 2), index);
+      const priorContext = priorTurns.map((item) => (item.role === "page" ? "Page: " : "Client: ") + item.text).join("\n");
+      const clientContextMessages = priorTurns.filter((item) => item.role === "client").map((item) => item.text);
+      pairs.push({ question: turn.text, clientMessageId: turn.ids[0], pageReply: response ? response.text : "", pageMessageId: response ? response.ids[0] : "", context: priorContext, clientContextMessages: clientContextMessages });
     });
     elements.messagePairs.className = "messenger-message-pairs";
     if (!pairs.length) {
@@ -313,6 +315,7 @@
           question: pair.question,
           pageReply: pair.pageReply,
           context: pair.context,
+          clientContextMessages: pair.clientContextMessages,
         }));
       }
       await refreshLibrary();
@@ -325,11 +328,31 @@
     }
   }
 
+  function getClientContextMessages(item) {
+    if (Array.isArray(item.clientContextMessages)) {
+      return item.clientContextMessages.filter((message) => typeof message === "string" && message.trim());
+    }
+    return String(item.context || "")
+      .split(/\n(?=(?:Page|Client): )/u)
+      .filter((part) => part.startsWith("Client: "))
+      .map((part) => part.slice("Client: ".length).trim())
+      .filter(Boolean);
+  }
+
   function createCaseCard(item) {
     const card = document.createElement("article");
     card.className = "messenger-case-card";
     card.dataset.caseId = item.id;
     const meta = makeText("small", "messenger-case-meta", "Messenger · " + formatDate(item.createdAt));
+    const caseType = document.createElement("select");
+    caseType.setAttribute("aria-label", "Test case type");
+    [["single", "Single message"], ["journey", "Journey (sequential messages)"]].forEach(([value, label]) => {
+      const option = document.createElement("option");
+      option.value = value;
+      option.textContent = label;
+      caseType.appendChild(option);
+    });
+    caseType.value = item.caseType === "journey" ? "journey" : "single";
     const category = document.createElement("input");
     category.type = "text";
     category.maxLength = 80;
@@ -341,6 +364,61 @@
     const pageReply = document.createElement("textarea");
     pageReply.value = item.pageReply || "";
     pageReply.setAttribute("aria-label", "Page reply reference");
+    const singleField = document.createElement("div");
+    singleField.className = "messenger-case-field";
+    singleField.append(makeText("strong", "", "Client question"), question);
+    const journeyMessages = document.createElement("textarea");
+    journeyMessages.setAttribute("aria-label", "Ordered client seed messages");
+    const initialJourneyMessages = Array.isArray(item.clientMessages) && item.clientMessages.length
+      ? item.clientMessages
+      : [...getClientContextMessages(item), item.question].filter(Boolean);
+    journeyMessages.value = initialJourneyMessages.join("\n");
+    journeyMessages.placeholder = "One client message per line";
+    journeyMessages.setAttribute("aria-describedby", "messenger-journey-hint-" + item.id);
+    const journeyField = document.createElement("div");
+    journeyField.className = "messenger-case-field";
+    journeyField.append(makeText("strong", "", "Ordered client seed messages"), journeyMessages);
+    const journeyHint = makeText("small", "messenger-case-meta", "One client message per line. Messages are sent in order within one fresh session.");
+    journeyHint.id = "messenger-journey-hint-" + item.id;
+    journeyField.appendChild(journeyHint);
+    let journeyMessagesEdited = item.caseType === "journey";
+    let previousCaseType = caseType.value;
+    journeyMessages.addEventListener("input", () => { journeyMessagesEdited = true; });
+    function getDraft() {
+      const isJourney = caseType.value === "journey";
+      const clientMessages = isJourney
+        ? journeyMessages.value.split(/\r?\n/u).map((message) => message.trim()).filter(Boolean).slice(0, 20)
+        : [question.value.trim()].filter(Boolean);
+      return {
+        caseType: isJourney ? "journey" : "single",
+        clientMessages,
+        question: isJourney ? (clientMessages[clientMessages.length - 1] || "") : question.value.trim(),
+        pageReply: pageReply.value,
+        context: item.context || "",
+        clientContextMessages: getClientContextMessages(item),
+      };
+    }
+    function syncCaseType(fromChange) {
+      const isJourney = caseType.value === "journey";
+      if (fromChange && isJourney && previousCaseType !== "journey") {
+        const existingSeeds = journeyMessages.value.split(/\r?\n/u).map((message) => message.trim()).filter(Boolean);
+        if (!journeyMessagesEdited) {
+          journeyMessages.value = [...getClientContextMessages(item), question.value.trim()].filter(Boolean).join("\n");
+        } else if (question.value.trim() && existingSeeds.length && question.value.trim() !== existingSeeds[existingSeeds.length - 1]) {
+          existingSeeds[existingSeeds.length - 1] = question.value.trim();
+          journeyMessages.value = existingSeeds.join("\n");
+        }
+      }
+      if (fromChange && !isJourney && previousCaseType === "journey" && journeyMessages.value.trim()) {
+        const messages = journeyMessages.value.split(/\r?\n/u).map((message) => message.trim()).filter(Boolean);
+        if (messages.length) question.value = messages[messages.length - 1];
+      }
+      previousCaseType = caseType.value;
+      singleField.hidden = isJourney;
+      journeyField.hidden = !isJourney;
+    }
+    caseType.addEventListener("change", () => syncCaseType(true));
+    syncCaseType(false);
     const tags = makeText("small", "messenger-case-meta", item.intent ? "Intent: " + item.intent + " · " + (item.replyType || "other") : "Not AI labeled yet");
     card.dataset.search = [item.category, item.intent, item.summary, item.question, ...(Array.isArray(item.tags) ? item.tags : [])].join(" ").toLowerCase();
     const tagRow = document.createElement("div");
@@ -352,11 +430,9 @@
     save.type = "button";
     save.addEventListener("click", async () => {
       try {
-        await requestJson("/library/cases/" + encodeURIComponent(item.id), jsonOptions("PATCH", {
-          category: category.value,
-          question: question.value,
-          pageReply: pageReply.value,
-        }));
+        const draft = getDraft();
+        if (!draft.clientMessages.length) throw new Error("Add at least one client message.");
+        await requestJson("/library/cases/" + encodeURIComponent(item.id), jsonOptions("PATCH", { ...draft, category: category.value }));
         await refreshLibrary();
         setNotice("Saved local edits.", false);
       } catch (error) { setNotice(error.message, true); }
@@ -367,11 +443,16 @@
     label.addEventListener("click", async () => {
       label.disabled = true;
       setNotice("Sending this selected question and Page reply for AI labeling…", false);
+      let editsSaved = false;
       try {
+        const draft = getDraft();
+        if (!draft.clientMessages.length) throw new Error("Add at least one client message.");
+        await requestJson("/library/cases/" + encodeURIComponent(item.id), jsonOptions("PATCH", { ...draft, category: category.value }));
+        editsSaved = true;
         const result = await requestJson("/label", jsonOptions("POST", {
-          question: question.value,
-          pageReply: pageReply.value,
-          context: "",
+          question: draft.caseType === "journey" ? draft.clientMessages.join("\n") : draft.question,
+          pageReply: draft.pageReply,
+          context: draft.context,
         }));
         const labels = result.labels || {};
         await requestJson("/library/cases/" + encodeURIComponent(item.id), jsonOptions("PATCH", {
@@ -385,16 +466,25 @@
         Object.assign(item, labels);
         await refreshLibrary();
         setNotice("AI label saved locally. Review the category and tags.", false);
-      } catch (error) { setNotice(error.message, true); }
+      } catch (error) { setNotice((editsSaved ? "Edits saved; AI label failed: " : "") + error.message, true); }
       finally { label.disabled = !state.aiConfigured; }
     });
     const run = makeText("button", "primary-button", "Test this question");
     run.type = "button";
     run.addEventListener("click", () => {
+      const draft = getDraft();
+      if (!draft.clientMessages.length) {
+        setNotice("Add at least one client message before testing.", true);
+        return;
+      }
       window.dispatchEvent(new CustomEvent("chatbotTester:runLibraryCase", {
         detail: {
-          question: question.value,
-          pageReply: pageReply.value,
+          question: draft.question,
+          clientMessages: draft.clientMessages,
+          clientContextMessages: draft.clientContextMessages,
+          context: draft.context,
+          caseType: draft.caseType,
+          pageReply: draft.pageReply,
           category: category.value,
           channel: elements.testChannel && elements.testChannel.value === "website" ? "website" : "messenger",
         },
@@ -410,8 +500,15 @@
       } catch (error) { setNotice(error.message, true); }
     });
     actions.append(save, label, run, remove);
-    card.append(meta, makeText("strong", "", "Category"), category, makeText("strong", "", "Client question"), question, makeText("strong", "", "Page reply reference"), pageReply, tags, tagRow, actions);
+    card.append(meta, makeText("strong", "", "Test case type"), caseType, makeText("strong", "", "Category"), category, singleField, journeyField, makeText("strong", "", "Page reply reference (reference only)"), pageReply, tags, tagRow, actions);
     return card;
+  }
+
+  function labelInputFor(item) {
+    const clientMessages = item.caseType === "journey" && Array.isArray(item.clientMessages) && item.clientMessages.length
+      ? item.clientMessages
+      : [item.question];
+    return item.caseType === "journey" ? clientMessages.join("\n") : item.question;
   }
 
   async function refreshLibrary() {
@@ -468,7 +565,7 @@
       const item = untagged[index];
       setNotice("AI labeling " + (index + 1) + " of " + untagged.length + "…", false);
       try {
-        const result = await requestJson("/label", jsonOptions("POST", { question: item.question, pageReply: item.pageReply, context: "" }));
+        const result = await requestJson("/label", jsonOptions("POST", { question: labelInputFor(item), pageReply: item.pageReply, context: item.context || "" }));
         const labels = result.labels || {};
         await requestJson("/library/cases/" + encodeURIComponent(item.id), jsonOptions("PATCH", {
           category: labels.category,

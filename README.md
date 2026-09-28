@@ -12,7 +12,7 @@ MESSENGER_PAGE_ACCESS_TOKEN=your_page_access_token
 META_GRAPH_API_VERSION=v23.0
 ```
 
-AI labeling runs only when requested in the UI and uses `GEMINI_API_KEY`. It sends the selected client question and following Page message to Gemini, not the entire conversation. Messages sent by the Page can be written by a staff member or a bot; Meta does not distinguish those senders here, so review the Page reply before saving it as a reference. Testing a saved question switches to the existing chat workspace and sends it to the currently selected chatbot; select the local V2 bot first.
+AI labeling runs only when requested in the UI and uses `GEMINI_API_KEY`. It sends the saved client context, test message(s), and following Page message to Gemini, not the full transcript. Messages sent by the Page can be written by a staff member or a bot; Meta does not distinguish those senders here, so review the Page reply before saving it as a reference. Testing a saved case switches to the existing chat workspace and sends only client messages to the currently selected chatbot; Page replies remain reference-only. Single cases replay their saved client context before the question, while journey cases send their ordered client seed messages in a fresh session. Select the local V2 bot first.
 
 This local library loads up to 20 recent conversations and up to 100 messages per conversation in this first iteration. The local archive and test cases can be deleted locally; deleting them never deletes Facebook messages.
 

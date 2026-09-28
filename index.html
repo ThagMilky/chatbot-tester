@@ -142,7 +142,7 @@
                 <label class="sr-only" for="messenger-case-filter">Filter saved test cases</label>
                 <input id="messenger-case-filter" class="messenger-case-filter" type="search" placeholder="Filter by topic, label or client question…" />
                 <p class="field-hint">Before testing, select <strong>Cyno Software V2</strong> from the chatbot selector above. Choose whether to send the test as Website or Messenger.</p>
-                <p class="field-hint">AI labeling sends each saved client question and Page reply to Gemini. It runs only when you click a label button and does not include the whole conversation.</p>
+                <p class="field-hint">AI labeling sends the saved client context, test message(s), and Page reply reference to Gemini only when you click a label button. Page replies are never sent to the chatbot during a test.</p>
                 <div id="messenger-saved-cases" class="messenger-saved-cases empty-debug-value">No saved test cases yet.</div>
               </section>
             </section>

@@ -25,6 +25,11 @@ function safeText(value, maxLength = 12000, allowEmpty = false) {
   return result.slice(0, maxLength);
 }
 
+function safeTextArray(values, maxItems = 20, maxLength = 12000) {
+  if (!Array.isArray(values)) return [];
+  return values.map((value) => safeText(value, maxLength)).filter(Boolean).slice(0, maxItems);
+}
+
 function readBody(request) {
   return new Promise((resolve, reject) => {
     const chunks = [];
@@ -336,6 +341,11 @@ function createMessengerLibraryApi(options = {}) {
           question,
           pageReply: safeText(body.pageReply, 12000, true) || "",
           context: safeText(body.context, 2000, true) || "",
+          clientContextMessages: safeTextArray(body.clientContextMessages),
+          caseType: body.caseType === "journey" ? "journey" : "single",
+          clientMessages: body.caseType === "journey"
+            ? safeTextArray(body.clientMessages)
+            : [question],
           category: "Chưa gán nhãn",
           intent: "",
           replyType: "other",
@@ -361,6 +371,20 @@ function createMessengerLibraryApi(options = {}) {
         }
         if (Object.hasOwn(body, "question")) item.question = safeText(body.question, 12000) || item.question;
         if (Object.hasOwn(body, "pageReply")) item.pageReply = safeText(body.pageReply, 12000, true) || "";
+        if (Object.hasOwn(body, "context")) item.context = safeText(body.context, 2000, true) || "";
+        if (Object.hasOwn(body, "clientContextMessages") && Array.isArray(body.clientContextMessages)) {
+          item.clientContextMessages = safeTextArray(body.clientContextMessages);
+        }
+        if (Object.hasOwn(body, "caseType")) item.caseType = body.caseType === "journey" ? "journey" : "single";
+        if (Object.hasOwn(body, "clientMessages") && Array.isArray(body.clientMessages)) {
+          const clientMessages = safeTextArray(body.clientMessages);
+          if ((body.caseType === "journey" || item.caseType === "journey") && !clientMessages.length) {
+            sendJson(response, 400, { status: "error", error: "A journey test case needs at least one client seed message." });
+            return true;
+          }
+          item.clientMessages = clientMessages;
+          if (item.caseType === "journey" && clientMessages.length) item.question = clientMessages[clientMessages.length - 1];
+        }
         if (Object.hasOwn(body, "category")) item.category = safeText(body.category, 80) || "Chưa gán nhãn";
         if (Object.hasOwn(body, "intent")) item.intent = safeText(body.intent, 160, true) || "";
         if (Object.hasOwn(body, "replyType")) item.replyType = ["answer", "clarification", "offer", "handoff", "other"].includes(body.replyType) ? body.replyType : "other";
