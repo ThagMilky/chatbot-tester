@@ -3501,7 +3501,7 @@
       : getEnabledBehaviorKeys(state.scenario.evaluationInput.behaviorExpectations).length
         ? { status: "pending" }
         : { status: "skipped", summary: "No behavior expectations are enabled.", checks: [] };
-    updateScenarioControls();
+    updateLoadingControls();
     showToast(executionError
       ? "Scenario execution failed at message " + failedTurnNumber + "."
       : "Scenario execution complete · assertions " + state.scenario.result.assertionStatus + ".");
