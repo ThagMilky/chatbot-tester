@@ -75,11 +75,16 @@
                   <h2 id="history-title">Recent Chat History</h2>
                 </div>
                 <div class="history-workspace-actions">
-                  <button id="export-history" class="secondary-button" type="button" disabled>Export all JSON</button>
+                  <label class="history-select-all">
+                    <input id="select-all-history" type="checkbox" disabled>
+                    <span>Select all</span>
+                  </label>
+                  <button id="clear-history-selection" class="secondary-button" type="button" disabled>Clear selection</button>
+                  <button id="export-history" class="secondary-button" type="button" disabled>Export selected JSON</button>
                   <button id="clear-history" class="secondary-button" type="button" disabled>Clear history</button>
                 </div>
               </div>
-              <p class="field-hint">Saved in this browser only. Export includes all saved conversations and any stored Scenario/AI QA results. Continue chat reuses the saved session ID; backend session retention depends on the bot API.</p>
+              <p class="field-hint">Saved in this browser only. Select conversations to export their transcripts and any stored Scenario/AI QA results. Continue chat reuses the saved session ID; backend session retention depends on the bot API.</p>
               <div id="history-empty" class="history-empty empty-debug-value">No saved conversations yet.</div>
               <div id="history-list" class="history-list" aria-live="polite"></div>
               <article id="history-viewer" class="history-viewer" aria-labelledby="history-viewer-title" hidden>

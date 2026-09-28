@@ -277,6 +277,8 @@
     workspacePanels: Array.prototype.slice.call(document.querySelectorAll(".workspace-panel")),
     historyList: document.getElementById("history-list"),
     historyEmpty: document.getElementById("history-empty"),
+    selectAllHistory: document.getElementById("select-all-history"),
+    clearHistorySelection: document.getElementById("clear-history-selection"),
     exportHistory: document.getElementById("export-history"),
     clearHistory: document.getElementById("clear-history"),
     historyViewer: document.getElementById("history-viewer"),
@@ -474,6 +476,7 @@
     messages: [],
     turns: [],
     historyViewerId: null,
+    selectedHistoryIds: new Set(),
     historyTurnCountOffset: 0,
     selectedTurnId: null,
     nextTurnNumber: 1,
@@ -1363,9 +1366,9 @@
     if (!historyStore || !elements.historyList) return;
 
     const records = historyStore.load(getHistoryStorage());
+    updateHistorySelectionControls(records);
     elements.historyList.replaceChildren();
     elements.historyEmpty.hidden = records.length > 0;
-    if (elements.exportHistory) elements.exportHistory.disabled = records.length === 0;
     elements.clearHistory.disabled = records.length === 0;
 
     records.forEach(function (record) {
@@ -1418,7 +1421,20 @@
         deleteHistoryRecord(record.id);
       });
 
-      actions.append(openButton, copyButton, deleteButton);
+      const selectLabel = document.createElement("label");
+      selectLabel.className = "history-entry-select";
+      const selectCheckbox = document.createElement("input");
+      selectCheckbox.type = "checkbox";
+      selectCheckbox.checked = state.selectedHistoryIds.has(record.id);
+      selectCheckbox.setAttribute("aria-label", "Select conversation for export: " + getHistoryPreview(record));
+      selectCheckbox.addEventListener("change", function () {
+        if (selectCheckbox.checked) state.selectedHistoryIds.add(record.id);
+        else state.selectedHistoryIds.delete(record.id);
+        updateHistorySelectionControls(records);
+      });
+      selectLabel.append(selectCheckbox, document.createTextNode("Export"));
+
+      actions.append(selectLabel, openButton, copyButton, deleteButton);
       entry.append(content, actions);
       elements.historyList.appendChild(entry);
     });
@@ -1432,6 +1448,28 @@
         closeHistoryViewer();
       }
     }
+  }
+
+  function updateHistorySelectionControls(records) {
+    const availableRecords = records || (historyStore ? historyStore.load(getHistoryStorage()) : []);
+    const availableIds = new Set(availableRecords.map(function (record) { return record.id; }));
+    state.selectedHistoryIds = new Set(Array.from(state.selectedHistoryIds).filter(function (id) {
+      return availableIds.has(id);
+    }));
+    const selectedCount = state.selectedHistoryIds.size;
+    const recordCount = availableRecords.length;
+    if (elements.selectAllHistory) {
+      elements.selectAllHistory.disabled = recordCount === 0;
+      elements.selectAllHistory.checked = recordCount > 0 && selectedCount === recordCount;
+      elements.selectAllHistory.indeterminate = selectedCount > 0 && selectedCount < recordCount;
+    }
+    if (elements.clearHistorySelection) elements.clearHistorySelection.disabled = selectedCount === 0;
+    if (elements.exportHistory) elements.exportHistory.disabled = selectedCount === 0;
+  }
+
+  function clearHistorySelection() {
+    state.selectedHistoryIds.clear();
+    renderHistoryList();
   }
 
   function deleteHistoryRecord(historyId) {
@@ -3604,7 +3642,9 @@
 
   function exportHistory() {
     if (!historyStore) return;
-    const conversations = historyStore.load(getHistoryStorage());
+    const conversations = historyStore.load(getHistoryStorage()).filter(function (record) {
+      return state.selectedHistoryIds.has(record.id);
+    });
     if (!conversations.length) return;
     const report = {
       format: "chatbot-tester-history-qa-v1",
@@ -3616,12 +3656,12 @@
     const blob = new Blob([JSON.stringify(report, null, 2)], { type: "application/json;charset=utf-8" });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
-    link.download = "chatbot-tester-history-" + new Date().toISOString().slice(0, 10) + ".json";
+    link.download = "chatbot-tester-history-selected-" + new Date().toISOString().slice(0, 10) + ".json";
     document.body.appendChild(link);
     link.click();
     link.remove();
     window.setTimeout(function () { URL.revokeObjectURL(link.href); }, 0);
-    showToast("Đã export " + conversations.length + " conversation history entries.");
+    showToast("Đã export " + conversations.length + " cuộc trò chuyện đã chọn.");
   }
 
   function resetDebug() {
@@ -3927,6 +3967,16 @@
   if (elements.copyChat) elements.copyChat.addEventListener("click", copyConversation);
   if (elements.copySimulatorChat) elements.copySimulatorChat.addEventListener("click", copyConversation);
   if (elements.exportHistory) elements.exportHistory.addEventListener("click", exportHistory);
+  if (elements.selectAllHistory) {
+    elements.selectAllHistory.addEventListener("change", function () {
+      const records = historyStore ? historyStore.load(getHistoryStorage()) : [];
+      state.selectedHistoryIds = elements.selectAllHistory.checked
+        ? new Set(records.map(function (record) { return record.id; }))
+        : new Set();
+      renderHistoryList();
+    });
+  }
+  if (elements.clearHistorySelection) elements.clearHistorySelection.addEventListener("click", clearHistorySelection);
   if (elements.clearHistory) elements.clearHistory.addEventListener("click", clearHistory);
   if (elements.closeHistoryViewer) elements.closeHistoryViewer.addEventListener("click", closeHistoryViewer);
   if (elements.continueHistoryViewer) {
