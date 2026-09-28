@@ -75,19 +75,20 @@
                 </div>
                 <button id="clear-history" class="secondary-button" type="button" disabled>Clear history</button>
               </div>
-              <p class="field-hint">Saved in this browser only. History is read-only and never resumes an old backend session.</p>
+              <p class="field-hint">Saved in this browser only. Continue chat reuses the saved session ID; backend session retention depends on the bot API.</p>
               <div id="history-empty" class="history-empty empty-debug-value">No saved conversations yet.</div>
               <div id="history-list" class="history-list" aria-live="polite"></div>
               <article id="history-viewer" class="history-viewer" aria-labelledby="history-viewer-title" hidden>
                 <div class="tool-heading history-viewer-heading">
                   <div>
-                    <p class="section-kicker">Read-only transcript</p>
+                    <p class="section-kicker">Saved conversation</p>
                     <h3 id="history-viewer-title">Conversation</h3>
                   </div>
                   <button id="close-history-viewer" class="secondary-button" type="button">Close</button>
                 </div>
                 <div class="history-viewer-actions">
                   <button id="copy-history-viewer" class="secondary-button" type="button">Copy chat</button>
+                  <button id="continue-history-viewer" class="primary-button" type="button" disabled>Continue chat</button>
                 </div>
                 <pre id="history-transcript" class="history-transcript"></pre>
               </article>
