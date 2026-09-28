@@ -77,7 +77,7 @@
     const sessionId = nonEmptyString(record.sessionId, "");
     if (!sessionId || !messages.length) return null;
 
-    return {
+    const normalized = {
       id: nonEmptyString(record.id, createHistoryId()),
       sessionId: sessionId,
       botId: nonEmptyString(record.botId, null),
@@ -90,6 +90,16 @@
         : 0,
       messages: messages,
     };
+
+    if (isObject(record.qaReport) && record.qaReport.format === "chatbot-tester-qa-v1") {
+      try {
+        normalized.qaReport = JSON.parse(JSON.stringify(record.qaReport));
+      } catch (error) {
+        // Ignore malformed QA data while retaining the saved transcript.
+      }
+    }
+
+    return normalized;
   }
 
   function sortNewestFirst(records) {

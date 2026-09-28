@@ -3403,6 +3403,12 @@ body {
   align-items: flex-start;
 }
 
+.history-workspace-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .history-workspace > .field-hint {
   max-width: 760px;
   margin-bottom: 18px;

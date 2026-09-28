@@ -277,6 +277,7 @@
     workspacePanels: Array.prototype.slice.call(document.querySelectorAll(".workspace-panel")),
     historyList: document.getElementById("history-list"),
     historyEmpty: document.getElementById("history-empty"),
+    exportHistory: document.getElementById("export-history"),
     clearHistory: document.getElementById("clear-history"),
     historyViewer: document.getElementById("history-viewer"),
     historyViewerTitle: document.getElementById("history-viewer-title"),
@@ -612,6 +613,9 @@
       updatedAt: now,
       turnCount: state.historyTurnCountOffset + state.turns.length,
       messages: mergeHistoryMessages(existing && existing.messages, messages),
+      qaReport: state.scenario.result && state.scenario.execution
+        ? buildQaReport()
+        : existing && existing.qaReport || null,
     }, storage);
   }
 
@@ -1361,6 +1365,7 @@
     const records = historyStore.load(getHistoryStorage());
     elements.historyList.replaceChildren();
     elements.historyEmpty.hidden = records.length > 0;
+    if (elements.exportHistory) elements.exportHistory.disabled = records.length === 0;
     elements.clearHistory.disabled = records.length === 0;
 
     records.forEach(function (record) {
@@ -3281,6 +3286,7 @@
         checks: [],
       };
       updateScenarioControls();
+      saveScenarioQaToHistory();
       return;
     }
 
@@ -3288,6 +3294,7 @@
     state.scenario.evaluationRequestToken = requestToken;
     state.scenario.behaviorEvaluation = { status: "pending" };
     updateScenarioControls();
+    saveScenarioQaToHistory();
     try {
       const response = await fetch("/api/evaluate-behavior", {
         method: "POST",
@@ -3320,11 +3327,19 @@
         };
       }
       updateScenarioControls();
+      saveScenarioQaToHistory();
     } catch (error) {
       if (state.scenario.runToken !== runToken || state.scenario.evaluationRequestToken !== requestToken) return;
       state.scenario.behaviorEvaluation = { status: "error" };
       updateScenarioControls();
+      saveScenarioQaToHistory();
     }
+  }
+
+  function saveScenarioQaToHistory() {
+    if (!state.scenario.result || !state.scenario.execution) return;
+    saveCurrentConversationToHistory();
+    renderHistoryList();
   }
 
   function reevaluateBehavior() {
@@ -3501,6 +3516,7 @@
       : getEnabledBehaviorKeys(state.scenario.evaluationInput.behaviorExpectations).length
         ? { status: "pending" }
         : { status: "skipped", summary: "No behavior expectations are enabled.", checks: [] };
+    saveScenarioQaToHistory();
     updateLoadingControls();
     showToast(executionError
       ? "Scenario execution failed at message " + failedTurnNumber + "."
@@ -3584,6 +3600,28 @@
     link.remove();
     window.setTimeout(function () { URL.revokeObjectURL(link.href); }, 0);
     showToast("Đã export QA report dạng " + format.toUpperCase() + ".");
+  }
+
+  function exportHistory() {
+    if (!historyStore) return;
+    const conversations = historyStore.load(getHistoryStorage());
+    if (!conversations.length) return;
+    const report = {
+      format: "chatbot-tester-history-qa-v1",
+      exportedAt: new Date().toISOString(),
+      conversationCount: conversations.length,
+      scenarioQaCount: conversations.filter(function (record) { return Boolean(record.qaReport); }).length,
+      conversations: conversations,
+    };
+    const blob = new Blob([JSON.stringify(report, null, 2)], { type: "application/json;charset=utf-8" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = "chatbot-tester-history-" + new Date().toISOString().slice(0, 10) + ".json";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(function () { URL.revokeObjectURL(link.href); }, 0);
+    showToast("Đã export " + conversations.length + " conversation history entries.");
   }
 
   function resetDebug() {
@@ -3888,6 +3926,7 @@
   });
   if (elements.copyChat) elements.copyChat.addEventListener("click", copyConversation);
   if (elements.copySimulatorChat) elements.copySimulatorChat.addEventListener("click", copyConversation);
+  if (elements.exportHistory) elements.exportHistory.addEventListener("click", exportHistory);
   if (elements.clearHistory) elements.clearHistory.addEventListener("click", clearHistory);
   if (elements.closeHistoryViewer) elements.closeHistoryViewer.addEventListener("click", closeHistoryViewer);
   if (elements.continueHistoryViewer) {
