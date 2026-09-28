@@ -3509,6 +3509,8 @@
       evaluationRequestToken: null,
     };
     resetConversationData();
+    const referencePanel = document.getElementById("reference-answer-panel");
+    if (referencePanel) referencePanel.hidden = true;
     updateScenarioControls();
     showToast("Đã tạo conversation và session mới.");
     elements.messageInput.focus();
@@ -3519,6 +3521,8 @@
     saveCurrentConversationToHistory();
     invalidateScenarioEvaluation();
     state.messages = [];
+    const referencePanel = document.getElementById("reference-answer-panel");
+    if (referencePanel) referencePanel.hidden = true;
     renderMessages();
     renderHistoryList();
     updateScenarioControls();
@@ -3672,6 +3676,34 @@
   elements.form.addEventListener("submit", function (event) {
     event.preventDefault();
     void sendMessage();
+  });
+  window.addEventListener("chatbotTester:runLibraryCase", function (event) {
+    const testCase = event.detail || {};
+    const question = typeof testCase.question === "string" ? testCase.question.trim() : "";
+    if (!question || !state.selectedBot || !getBotApiUrl(state.selectedBot)) {
+      showToast("Chọn chatbot có API trước khi chạy ca test.");
+      return;
+    }
+    const channel = testCase.channel === "messenger" ? "messenger" : "website";
+    if (elements.channelMode) {
+      elements.channelMode.value = channel;
+      elements.channelMode.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+    state.senderMode = "client";
+    updateChannelDisplay();
+    startNewConversation();
+
+    const referencePanel = document.getElementById("reference-answer-panel");
+    const referenceText = document.getElementById("reference-answer-text");
+    const referenceTitle = document.getElementById("reference-answer-title");
+    if (referencePanel && referenceText) {
+      referencePanel.hidden = false;
+      referenceText.textContent = testCase.pageReply || "Không có phản hồi Page kế tiếp trong dữ liệu gốc.";
+      if (referenceTitle) referenceTitle.textContent = testCase.category || "Trả lời từ Page";
+    }
+    setActiveWorkspace("tab-chat");
+    elements.messageInput.value = question;
+    elements.form.requestSubmit();
   });
   elements.messageInput.addEventListener("keydown", function (event) {
     if (event.key === "Enter" && !event.shiftKey) {

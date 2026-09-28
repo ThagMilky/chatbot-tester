@@ -42,6 +42,7 @@
               <button id="tab-scenarios" class="workspace-tab" type="button" role="tab" aria-controls="panel-scenarios" aria-selected="false" tabindex="-1">Scenarios</button>
               <button id="tab-debug" class="workspace-tab" type="button" role="tab" aria-controls="panel-debug" aria-selected="false" tabindex="-1">Debug</button>
               <button id="tab-history" class="workspace-tab" type="button" role="tab" aria-controls="panel-history" aria-selected="false" tabindex="-1">History</button>
+              <button id="tab-messenger-library" class="workspace-tab" type="button" role="tab" aria-controls="panel-messenger-library" aria-selected="false" tabindex="-1">Conversation Library</button>
             </nav>
 
             <div class="topbar-context" aria-live="polite">
@@ -92,6 +93,58 @@
                 </div>
                 <pre id="history-transcript" class="history-transcript"></pre>
               </article>
+            </section>
+          </section>
+          <section id="panel-messenger-library" class="workspace-panel" role="tabpanel" aria-labelledby="tab-messenger-library" hidden>
+            <section class="tool-section messenger-library" aria-labelledby="messenger-library-title">
+              <div class="tool-heading">
+                <div>
+                  <p class="section-kicker">Local only · Read from Meta</p>
+                  <h2 id="messenger-library-title">Conversation Library</h2>
+                </div>
+                <span id="messenger-library-status" class="tool-status" aria-live="polite">Checking local setup…</span>
+              </div>
+              <p class="field-hint">Meta token stays on this computer. Fetching never sends a Messenger reply. Saving copies conversations into a private local file.</p>
+              <div class="messenger-library-toolbar">
+                <button id="messenger-load-conversations" class="primary-button" type="button">Load recent conversations</button>
+                <button id="messenger-refresh-library" class="secondary-button" type="button">Refresh saved library</button>
+              </div>
+              <p id="messenger-library-notice" class="field-hint" aria-live="polite"></p>
+              <div class="messenger-library-grid">
+                <section class="messenger-library-column" aria-labelledby="messenger-remote-title">
+                  <h3 id="messenger-saved-conversations-title">Saved on this computer</h3>
+                  <div id="messenger-saved-conversations" class="messenger-conversation-list empty-debug-value">No local conversations saved.</div>
+                  <h3 id="messenger-remote-title">Recent Page conversations</h3>
+                  <div id="messenger-conversation-list" class="messenger-conversation-list empty-debug-value">Load conversations to begin.</div>
+                </section>
+                <section class="messenger-library-column" aria-labelledby="messenger-detail-title">
+                  <div class="messenger-library-subheading">
+                    <h3 id="messenger-detail-title">Conversation messages</h3>
+                    <button id="messenger-delete-conversation" class="secondary-button" type="button" disabled>Delete local copy</button>
+                  </div>
+                  <p class="field-hint">Meta marks outgoing messages as sent by the Page; it does not identify whether a staff member or bot wrote them. Review the reference reply before saving.</p>
+                  <div id="messenger-message-pairs" class="messenger-message-pairs empty-debug-value">Choose a conversation.</div>
+                  <button id="messenger-save-selected" class="primary-button" type="button" disabled>Save selected test cases</button>
+                </section>
+              </div>
+              <section class="messenger-saved-section" aria-labelledby="messenger-saved-title">
+                <div class="messenger-library-subheading">
+                  <h3 id="messenger-saved-title">Saved test cases</h3>
+                  <div class="messenger-library-actions">
+                    <label for="messenger-case-test-channel">Test as</label>
+                    <select id="messenger-case-test-channel">
+                      <option value="messenger">Messenger</option>
+                      <option value="website">Website</option>
+                    </select>
+                    <button id="messenger-label-all" class="secondary-button" type="button" disabled>AI label untagged</button>
+                  </div>
+                </div>
+                <label class="sr-only" for="messenger-case-filter">Filter saved test cases</label>
+                <input id="messenger-case-filter" class="messenger-case-filter" type="search" placeholder="Filter by topic, label or client question…" />
+                <p class="field-hint">Before testing, select <strong>Cyno Software V2</strong> from the chatbot selector above. Choose whether to send the test as Website or Messenger.</p>
+                <p class="field-hint">AI labeling sends each saved client question and Page reply to Gemini. It runs only when you click a label button and does not include the whole conversation.</p>
+                <div id="messenger-saved-cases" class="messenger-saved-cases empty-debug-value">No saved test cases yet.</div>
+              </section>
             </section>
           </section>
         <div id="legacy-workspace-content" class="legacy-workspace-content">
@@ -364,6 +417,14 @@
 
             <div id="chat-icebreakers" class="chat-icebreakers" role="group" aria-label="Conversation starter options" hidden></div>
 
+              <aside id="reference-answer-panel" class="reference-answer-panel" hidden>
+                <div>
+                  <p class="section-kicker">Original Page reply</p>
+                  <strong id="reference-answer-title">Reference</strong>
+                </div>
+                <p id="reference-answer-text"></p>
+              </aside>
+
             <form id="chat-form" class="composer">
               <label class="sr-only" for="message-input">Nội dung tin nhắn</label>
               <fieldset id="sender-mode-controls" class="sender-mode-controls" hidden>
@@ -556,5 +617,6 @@
     <script src="regression-helpers.js"></script>
     <script src="history.js"></script>
     <script src="app.js"></script>
+    <script src="messenger-library-ui.js"></script>
   </body>
 </html>

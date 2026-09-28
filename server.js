@@ -42,6 +42,7 @@ const {
   getPublicSimulatorCatalog,
   validateSimulatorTurnPayload,
 } = require("./ai-client-simulator.js");
+const { createMessengerLibraryApi } = require("./messenger-library-api.js");
 
 const HOST = "127.0.0.1";
 const PORT = Number(process.env.PORT) || 8080;
@@ -49,6 +50,7 @@ const ROOT_DIR = __dirname;
 const EVALUATION_PATH = "/api/evaluate-behavior";
 const SIMULATOR_CATALOG_PATH = "/api/simulate-client-scenarios";
 const SIMULATOR_TURN_PATH = "/api/simulate-client-turn";
+const MESSENGER_API_PREFIX = "/api/messenger/";
 const MAX_BODY_BYTES = 256 * 1024;
 
 const MIME_TYPES = {
@@ -273,6 +275,11 @@ function createStaticHandler(options = {}) {
 function createHandler(options = {}) {
   const evaluator = createSafeEvaluator(options);
   const simulator = createSafeSimulator(options);
+  const messengerLibrary = options.messengerLibrary || createMessengerLibraryApi({
+    env: options.env || process.env,
+    fetchImpl: options.fetchImpl,
+    dataPath: options.messengerDataPath,
+  });
   const maxBodyBytes = options.maxBodyBytes || MAX_BODY_BYTES;
   const staticHandler = createStaticHandler(options);
   return async (request, response) => {
@@ -281,6 +288,18 @@ function createHandler(options = {}) {
       pathname = new URL(request.url || "/", "http://localhost").pathname;
     } catch (error) {
       sendText(response, 400, "Bad Request");
+      return;
+    }
+    if (pathname.startsWith(MESSENGER_API_PREFIX)) {
+      if (!isAllowedLocalHost(request.headers && request.headers.host)) {
+        sendJson(response, 403, { status: "error", error: "Messenger request host is not allowed." });
+        return;
+      }
+      if (!isAllowedOrigin(request.headers && request.headers.origin)) {
+        sendJson(response, 403, { status: "error", error: "Messenger request origin is not allowed." });
+        return;
+      }
+      await messengerLibrary.handle(request, response, new URL(request.url || "/", "http://localhost"));
       return;
     }
     const isEvaluationRequest = pathname === EVALUATION_PATH;

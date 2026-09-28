@@ -1,5 +1,23 @@
 # Chatbot Tester
 
+## Local Messenger conversation library
+
+The `Conversation Library` workspace can read recent Messenger conversations from one Facebook Page and save a local copy for test-case curation. It is read-only with respect to Messenger: it does not send messages to a Page. The local tester server keeps the Page token out of browser code and stores imported transcripts and curated cases in `data/private/messenger-library.json`, which is ignored by Git.
+
+Add these values to the local `.env` file in this repository. Use a Page ID and Page access token from the same Page; do not commit or paste the token into logs or screenshots.
+
+```dotenv
+MESSENGER_PAGE_ID=your_facebook_page_id
+MESSENGER_PAGE_ACCESS_TOKEN=your_page_access_token
+META_GRAPH_API_VERSION=v23.0
+```
+
+AI labeling runs only when requested in the UI and uses `GEMINI_API_KEY`. It sends the selected client question and following Page message to Gemini, not the entire conversation. Messages sent by the Page can be written by a staff member or a bot; Meta does not distinguish those senders here, so review the Page reply before saving it as a reference. Testing a saved question switches to the existing chat workspace and sends it to the currently selected chatbot; select the local V2 bot first.
+
+This local library loads up to 20 recent conversations and up to 100 messages per conversation in this first iteration. The local archive and test cases can be deleted locally; deleting them never deletes Facebook messages.
+
+When loading conversations or messages, the local server terminal prints a `[Messenger Library]` log with the stage, HTTP status, and duration. Errors also show in the library panel; logs omit tokens and message text. `Meta configured` only means the local `.env` has values—the first load is what confirms that Meta accepts the token and permissions.
+
 ## UI reference
 
 The dashboard UI is an original reimplementation inspired only by the public [Anngiie/Admin-Dashboard-Design](https://github.com/Anngiie/Admin-Dashboard-Design) Meridian reference. That reference is MIT licensed. No reference assets, remote fonts, icon libraries, or unrelated content are used here.

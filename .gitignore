@@ -11,3 +11,4 @@ Thumbs.db
 .vscode/
 .idea/
 coverage/
+/data/private/
