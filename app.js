@@ -489,6 +489,7 @@
       current: 0,
       total: 0,
       result: null,
+      execution: null,
       runToken: null,
       evaluationInput: null,
       behaviorEvaluation: null,
@@ -3043,6 +3044,12 @@
       noUnnecessaryRepetition: "No unnecessary repetition",
       noContradictionOrRenegotiation: "No contradiction or renegotiation",
       doNotIgnoreUserQuestion: "Do not ignore user question",
+      consultationRelevance: "Relevant, concise consultation",
+      singlePrimaryRequest: "At most one primary information request",
+      groundedWebsiteClaims: "Website claims grounded in supplied evidence",
+      contextualContactRequest: "Contextual contact request without repetition",
+      respectNeedCorrections: "Respect explicit need corrections",
+      boundedScopeAndFeasibility: "Bounded integration scope and feasibility",
     }[key] || key;
   }
 
@@ -3050,7 +3057,7 @@
     if (!elements.aiBehaviorResult) return;
     elements.aiBehaviorResult.replaceChildren();
     const current = evaluation || { status: "not-requested" };
-    const status = ["pending", "completed", "skipped", "unavailable", "error", "not-requested"].includes(current.status)
+    const status = ["pending", "completed", "skipped", "unavailable", "error", "not-requested", "not-evaluated"].includes(current.status)
       ? current.status
       : "error";
     elements.aiBehaviorResult.className = "ai-behavior-result status-" + status;
@@ -3065,6 +3072,7 @@
       status === "pending" ? "Evaluating completed scenario turns..." :
           status === "skipped" ? "No behavior expectations are enabled." :
             status === "not-requested" ? "Run a scenario to request behavior evaluation." :
+              status === "not-evaluated" ? "Not evaluated because scenario execution did not complete." :
           status === "unavailable" ? "Behavior evaluation is unavailable." :
             status === "error" ? "Behavior evaluation failed safely." : ""
     );
@@ -3110,25 +3118,30 @@
       return;
     }
 
-    elements.scenarioResult.className = "scenario-result " + (report.passed ? "passed" : "failed");
+    elements.scenarioResult.className = "scenario-result " + (report.executionStatus === "PASS" ? "passed" : "failed");
     const heading = document.createElement("strong");
-    heading.textContent = report.passed ? "PASS" : "FAIL";
+    heading.textContent = "Execution " + report.executionStatus + " · Assertions " + report.assertionStatus;
     elements.scenarioResult.appendChild(heading);
 
     const summary = document.createElement("span");
-    summary.textContent = " " + report.scenarioName + " · " + report.checks.filter(function (check) {
-      return check.passed;
-    }).length + "/" + report.checks.length + " assertions";
+    summary.textContent = " " + report.scenarioName + " · " + report.turnCount + "/" + report.expectedTurnCount + " turns";
     elements.scenarioResult.appendChild(summary);
+
+    if (report.executionError) {
+      const error = document.createElement("p");
+      error.className = "scenario-execution-error";
+      error.textContent = report.executionError;
+      elements.scenarioResult.appendChild(error);
+    }
 
     if (report.checks.length) {
       const list = document.createElement("ul");
       report.checks.forEach(function (check) {
         const item = document.createElement("li");
-        item.className = check.passed ? "passed" : "failed";
-        item.textContent = (check.passed ? "✓ " : "✗ ") + check.label +
+        item.className = check.status === "NOT EVALUATED" ? "not-evaluated" : check.passed ? "passed" : "failed";
+        item.textContent = (check.status === "NOT EVALUATED" ? "– " : check.passed ? "✓ " : "✗ ") + check.label +
           " · expected " + formatDebugValue(check.expected) +
-          " · actual " + formatDebugValue(check.actual);
+          " · actual " + formatDebugValue(check.actual) + (check.reason ? " · " + check.reason : "");
         list.appendChild(item);
       });
       elements.scenarioResult.appendChild(list);
@@ -3138,6 +3151,18 @@
       note.className = "scenario-behavior-note";
       note.textContent = "AI behavior checks are shown separately and never change deterministic assertions.";
       elements.scenarioResult.appendChild(note);
+    }
+    if (Array.isArray(report.observableExpectations) && report.observableExpectations.length) {
+      const expectationHeading = document.createElement("strong");
+      expectationHeading.textContent = "Observable expectations";
+      elements.scenarioResult.appendChild(expectationHeading);
+      const expectationList = document.createElement("ul");
+      report.observableExpectations.forEach(function (expectation) {
+        const item = document.createElement("li");
+        item.textContent = expectation;
+        expectationList.appendChild(item);
+      });
+      elements.scenarioResult.appendChild(expectationList);
     }
     renderBehaviorEvaluation(state.scenario.behaviorEvaluation);
   }
@@ -3173,9 +3198,12 @@
     if (elements.scenarioProgress) {
       if (state.scenario.running) {
         elements.scenarioProgress.textContent = "Đang chạy " + state.scenario.current + "/" + state.scenario.total;
+      } else if (state.scenario.execution && state.scenario.execution.status === "FAIL") {
+        elements.scenarioProgress.textContent = "Dừng tại turn " + state.scenario.execution.failedTurnNumber + "/" + state.scenario.total;
+      } else if (state.scenario.execution && state.scenario.execution.status === "PASS") {
+        elements.scenarioProgress.textContent = "Hoàn tất " + state.scenario.execution.completedTurns + "/" + state.scenario.total + " turns";
       } else if (state.scenario.total) {
-        elements.scenarioProgress.textContent = "Đã chạy " + state.scenario.total + " message" +
-          (state.scenario.total === 1 ? "" : "s");
+        elements.scenarioProgress.textContent = "Đã chạy " + state.turns.length + "/" + state.scenario.total + " turns";
       } else {
         elements.scenarioProgress.textContent = "Chưa chạy";
       }
@@ -3184,7 +3212,7 @@
     if (elements.reevaluateBehavior) {
       const enabled = getEnabledBehaviorKeys(state.scenario.evaluationInput && state.scenario.evaluationInput.behaviorExpectations);
       elements.reevaluateBehavior.disabled = state.scenario.running ||
-        !state.scenario.result || !state.scenario.evaluationInput || !enabled.length ||
+        !state.scenario.result || state.scenario.execution && state.scenario.execution.status !== "PASS" || !state.scenario.evaluationInput || !enabled.length ||
         (state.scenario.behaviorEvaluation && state.scenario.behaviorEvaluation.status === "pending");
     }
     renderRegressionDraft();
@@ -3203,7 +3231,12 @@
       messages: scenario.messages.map(function (message) { return String(message); }),
       replies: scenario.messages.map(function (message, index) {
         const turn = turns[index];
-        return turn && typeof turn.reply === "string" ? turn.reply : "";
+        if (!turn) return "";
+        return state.messages
+          .filter(function (item) { return item.turnId === turn.id && item.type === "bot"; })
+          .map(function (item) { return typeof item.text === "string" ? item.text : ""; })
+          .filter(Boolean)
+          .join("\n");
       }),
       behaviorExpectations: expectations,
       channelMode: ["website", "messenger"].includes(scenario.channelMode)
@@ -3318,13 +3351,23 @@
     const lastTurn = turns[turns.length - 1] || null;
     const debug = lastTurn && lastTurn.debug ? lastTurn.debug : {};
     const checks = [];
-    const addCheck = function (label, expected, actual) {
-      checks.push({ label: label, expected: expected, actual: actual, passed: valuesMatch(actual, expected) });
+    const complete = state.scenario.execution && state.scenario.execution.status === "PASS";
+    const addCheck = function (label, expected, actual, available) {
+      const evaluated = Boolean(complete && available !== false);
+      const passed = evaluated ? valuesMatch(actual, expected) : null;
+      checks.push({
+        label: label,
+        expected: expected,
+        actual: evaluated ? actual : undefined,
+        passed: passed,
+        status: !evaluated ? "NOT EVALUATED" : passed ? "PASS" : "FAIL",
+        reason: !complete ? "Scenario execution did not complete." : !evaluated ? "Required backend debug data was not provided." : "",
+      });
     };
 
-    if (Object.hasOwn(assertions, "intent")) addCheck("intent", assertions.intent, debug.intent);
-    if (Object.hasOwn(assertions, "step")) addCheck("state / step", assertions.step, debug.step);
-    if (Object.hasOwn(assertions, "state")) addCheck("state / step", assertions.state, debug.step);
+    if (Object.hasOwn(assertions, "intent")) addCheck("intent", assertions.intent, debug.intent, Boolean(debug.available && debug.intent !== undefined));
+    if (Object.hasOwn(assertions, "step")) addCheck("state / step", assertions.step, debug.step, Boolean(debug.available && debug.step !== undefined));
+    if (Object.hasOwn(assertions, "state")) addCheck("state / step", assertions.state, debug.step, Boolean(debug.available && debug.step !== undefined));
 
     const expectedFields = isObject(assertions.fields)
       ? assertions.fields
@@ -3333,22 +3376,35 @@
         : null;
     if (expectedFields) {
       Object.keys(expectedFields).forEach(function (field) {
-        addCheck("field " + field, expectedFields[field], debug.fields && debug.fields[field]);
+        addCheck("field " + field, expectedFields[field], debug.fields && debug.fields[field], Boolean(debug.available && debug.fields && Object.hasOwn(debug.fields, field)));
       });
     }
 
     if (Object.hasOwn(assertions, "telegramStatus")) {
-      addCheck("Telegram status", assertions.telegramStatus, debug.telegram && debug.telegram.status);
+      addCheck("Telegram status", assertions.telegramStatus, debug.telegram && debug.telegram.status, Boolean(debug.telegram && debug.telegram.status !== undefined));
     }
     if (Object.hasOwn(assertions, "telegramTriggerCount")) {
-      addCheck("Telegram trigger count", assertions.telegramTriggerCount, getTelegramTriggerCount(turns));
+      const hasTelegramData = turns.some(function (turn) { return Boolean(turn.debug && turn.debug.telegram); });
+      addCheck("Telegram trigger count", assertions.telegramTriggerCount, getTelegramTriggerCount(turns), hasTelegramData);
     }
+
+    const assertionStatus = !checks.length
+      ? "NOT EVALUATED"
+      : checks.some(function (check) { return check.status === "FAIL"; })
+        ? "FAIL"
+        : checks.some(function (check) { return check.status === "NOT EVALUATED"; })
+          ? "NOT EVALUATED"
+          : "PASS";
 
     return {
       scenarioName: scenario.name || scenario.id,
-      passed: checks.every(function (check) { return check.passed; }),
+      executionStatus: state.scenario.execution && state.scenario.execution.status || "PASS",
+      executionError: state.scenario.execution && state.scenario.execution.error || null,
+      assertionStatus: assertionStatus,
       checks: checks,
       turnCount: turns.length,
+      expectedTurnCount: scenario.messages.length,
+      observableExpectations: Array.isArray(scenario.observableExpectations) ? scenario.observableExpectations.slice() : [],
       behaviorExpectations: isObject(scenario.behaviorExpectations)
         ? { ...scenario.behaviorExpectations }
         : {},
@@ -3395,6 +3451,7 @@
     state.scenario.current = 0;
     state.scenario.total = scenario.messages.length;
     state.scenario.result = null;
+    state.scenario.execution = null;
     resetConversationData();
     const runToken = {};
     state.scenario.runToken = runToken;
@@ -3402,22 +3459,45 @@
     updateChannelDisplay();
     updateScenarioControls();
 
+    let executionError = null;
+    let failedTurnNumber = null;
     for (let index = 0; index < scenario.messages.length; index += 1) {
       state.scenario.current = index + 1;
       updateScenarioControls();
       const message = String(scenario.messages[index] == null ? "" : scenario.messages[index]);
-      await sendMessage(message, message, { scenarioId: scenario.id });
+      const turn = await sendMessage(message, message, { scenarioId: scenario.id });
+      if (!turn) {
+        executionError = "No turn was produced for client message " + (index + 1) + ".";
+        failedTurnNumber = index + 1;
+        break;
+      }
+      if (turn.error || !/^2[0-9]{2}(?:\s|$)/u.test(String(turn.status || ""))) {
+        executionError = turn.error || "Client message " + (index + 1) + " failed with status " + (turn.status || "unknown") + ".";
+        failedTurnNumber = index + 1;
+        break;
+      }
     }
 
     state.scenario.running = false;
+    state.scenario.execution = {
+      status: executionError ? "FAIL" : "PASS",
+      expectedTurns: scenario.messages.length,
+      completedTurns: state.turns.length,
+      failedTurnNumber: failedTurnNumber,
+      error: executionError,
+    };
     state.scenario.result = evaluateScenario(scenario, state.turns);
-    state.scenario.evaluationInput = createBehaviorEvaluationInput(scenario, state.turns);
-    state.scenario.behaviorEvaluation = getEnabledBehaviorKeys(state.scenario.evaluationInput.behaviorExpectations).length
-      ? { status: "pending" }
-      : { status: "skipped", summary: "No behavior expectations are enabled.", checks: [] };
+    state.scenario.evaluationInput = executionError ? null : createBehaviorEvaluationInput(scenario, state.turns);
+    state.scenario.behaviorEvaluation = executionError
+      ? { status: "not-evaluated", summary: "Not evaluated because scenario execution did not complete.", checks: [] }
+      : getEnabledBehaviorKeys(state.scenario.evaluationInput.behaviorExpectations).length
+        ? { status: "pending" }
+        : { status: "skipped", summary: "No behavior expectations are enabled.", checks: [] };
     updateScenarioControls();
-    showToast(state.scenario.result.passed ? "Scenario PASS." : "Scenario FAIL.");
-    void evaluateScenarioBehavior(state.scenario.evaluationInput, runToken);
+    showToast(executionError
+      ? "Scenario execution failed at message " + failedTurnNumber + "."
+      : "Scenario execution complete · assertions " + state.scenario.result.assertionStatus + ".");
+    if (!executionError) void evaluateScenarioBehavior(state.scenario.evaluationInput, runToken);
   }
 
   function buildQaReport() {

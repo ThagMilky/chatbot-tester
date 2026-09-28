@@ -58,9 +58,9 @@ Generated scenarios are stored locally in browser storage and are listed with co
 
 ## Behavior evaluation (Phase 4)
 
-After a Scenario Runner execution finishes, the deterministic assertions render immediately and remain the authoritative PASS/FAIL result. When one or more behavior expectations are enabled, the browser sends only the scenario metadata, ordered client messages, visible current bot replies, enabled expectations, and channel mode to `POST /api/evaluate-behavior` on the local server. The separate AI Behavior panel reports pending, PASS, FAIL, unavailable, error, or skipped status, with per-expectation evidence, relevant turn numbers, model, and safe token usage when available. `Re-evaluate Behavior` retries the completed turns without sending chatbot messages again.
+After a Scenario Runner execution finishes, execution status, deterministic assertion status, and AI behavior status are reported separately. Deterministic assertions show PASS, FAIL, or NOT EVALUATED; no assertions or missing required debug data are never reported as PASS. A failed/incomplete execution stops before later client messages and is not sent for AI evaluation. When behavior expectations are enabled, the browser sends only scenario metadata, ordered client messages, visible current bot replies, enabled expectations, and channel mode to `POST /api/evaluate-behavior`. `Re-evaluate Behavior` retries evaluation of the completed turns without sending chatbot messages again.
 
-The evaluator uses the OpenAI Responses API from the Node server with strict JSON Schema output, `reasoning: { effort }`, `store: false`, and a timeout. Deterministic assertions and AI behavior checks are never merged. AI evaluation judges only observable conversation behavior and does not assess hidden backend state, product/pricing truth, Telegram behavior, or business rules.
+The evaluator uses the OpenAI Responses API from the Node server with strict JSON Schema output, `reasoning: { effort }`, `store: false`, and a timeout. Deterministic assertions and AI behavior checks are never merged. AI evaluation judges only the visible client/bot conversation; it does not verify hidden state, backend contact-recency enforcement, official pricing correctness, or production side effects.
 
 Configure the evaluator only through the server environment. `OPENAI_API_KEY` is required for a live evaluation; the other values are optional:
 
@@ -84,6 +84,14 @@ node server.js
 ```
 
 The API key is never sent to browser code, `config.js`, QA exports, logs, errors, or evaluator response data. Conversation text is treated as untrusted data and is not treated as instructions. If the evaluator is unconfigured, unavailable, times out, refuses, returns an HTTP error, or produces invalid output, the deterministic Scenario Runner remains usable and the AI Behavior panel reports unavailable or error without inventing a verdict. Do not place real keys in this repository or in exported files.
+
+## Cyno V2 consultation regression pack
+
+Select `Cyno Software V2` in the Bot selector, then open `Scenarios` and choose a scenario named `V2 · ...`. Each case is configured for Messenger mode and the runner creates a fresh session, sending its synthetic Vietnamese client messages sequentially. Click `Run Scenario` to run the selected case. The pack contains 12 focused consultation cases; the existing Cyno V1 greeting scenario remains available.
+
+`Execution PASS/FAIL` reports whether every chatbot request produced a successful turn. `Assertions PASS/FAIL/NOT EVALUATED` reports configured deterministic debug checks; the V2 consultation pack intentionally has no deterministic assertions, so its status is `NOT EVALUATED`. `AI Behavior` is a separate optional evaluator verdict based on the visible conversation, with turn-specific evidence. Import/export preserves observable expectations and the behavior rubric keys.
+
+Running a scenario sends its client messages to the chatbot URL configured for the selected bot. Enabling behavior expectations calls the configured evaluator through the local server (OpenAI when configured). Scenarios and static checks do not verify live chatbot behavior unless you choose to run them. The current V2 boundary here is consultation and contact-request bookkeeping: phone capture, persistent leads, Telegram delivery, production Messenger, handoff, and follow-up are unsupported and are not claimed by this pack.
 
 ## AI Client Simulator
 
@@ -132,7 +140,7 @@ Có thể đổi port bằng biến môi trường:
 PORT=8081 node server.js
 ```
 
-Server chỉ serve static files trong folder này. Nó không proxy request, không gọi Telegram và không kết nối production.
+Server chỉ phục vụ allowlist asset giao diện; file cấu hình môi trường, dữ liệu riêng, file tạm, Git metadata và mã backend không được phân phối qua HTTP. Server không proxy request và không tự gọi chatbot hay Telegram.
 
 ## Thêm chatbot
 

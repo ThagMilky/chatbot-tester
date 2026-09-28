@@ -16,6 +16,12 @@
     "noUnnecessaryRepetition",
     "noContradictionOrRenegotiation",
     "doNotIgnoreUserQuestion",
+    "consultationRelevance",
+    "singlePrimaryRequest",
+    "groundedWebsiteClaims",
+    "contextualContactRequest",
+    "respectNeedCorrections",
+    "boundedScopeAndFeasibility",
   ];
 
   function isObject(value) {
@@ -153,6 +159,10 @@
     if (value.channelMode !== undefined && !["website", "messenger"].includes(value.channelMode)) {
       throw new Error("Scenario channelMode must be website or messenger.");
     }
+    if (value.observableExpectations !== undefined && (!Array.isArray(value.observableExpectations) ||
+      value.observableExpectations.some(function (item) { return typeof item !== "string" || !item.trim(); }))) {
+      throw new Error("Observable expectations must be an array of non-empty strings.");
+    }
 
     const result = {
       format: typeof value.format === "string" ? value.format : FORMAT,
@@ -162,6 +172,7 @@
       assertions: normalizeAssertions(value.assertions),
       behaviorExpectations: normalizeBehaviorExpectations(value.behaviorExpectations),
     };
+    if (Array.isArray(value.observableExpectations)) result.observableExpectations = value.observableExpectations.slice();
     if (value.botId) result.botId = value.botId.trim();
     if (value.channelMode) result.channelMode = value.channelMode;
     if (value.source && isObject(value.source)) result.source = clone(value.source);

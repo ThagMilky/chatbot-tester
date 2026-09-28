@@ -296,6 +296,12 @@
                   <label><input type="checkbox" data-behavior-key="noUnnecessaryRepetition" disabled /> No unnecessary repetition or re-asking known information</label>
                   <label><input type="checkbox" data-behavior-key="noContradictionOrRenegotiation" disabled /> No contradiction or renegotiation</label>
                   <label><input type="checkbox" data-behavior-key="doNotIgnoreUserQuestion" disabled /> Do not ignore the user question</label>
+                  <label><input type="checkbox" data-behavior-key="consultationRelevance" disabled /> Relevant consultation with necessary caveats</label>
+                  <label><input type="checkbox" data-behavior-key="singlePrimaryRequest" disabled /> At most one primary information request</label>
+                  <label><input type="checkbox" data-behavior-key="groundedWebsiteClaims" disabled /> No unsupported website inspection or diagnosis claims</label>
+                  <label><input type="checkbox" data-behavior-key="contextualContactRequest" disabled /> Contextual contact request without automatic repetition</label>
+                  <label><input type="checkbox" data-behavior-key="respectNeedCorrections" disabled /> Respect explicit need corrections</label>
+                  <label><input type="checkbox" data-behavior-key="boundedScopeAndFeasibility" disabled /> Keep scope and feasibility claims bounded</label>
                 </fieldset>
               </div>
               <div class="tool-actions regression-action-row">
@@ -307,7 +313,7 @@
               <div class="tool-actions">
                 <button id="import-regression" class="secondary-button" type="button">Import JSON</button>
               </div>
-              <p class="field-hint">Behavior expectations are evaluated separately by the local server after the deterministic result is shown.</p>
+              <p class="field-hint">Execution status, deterministic assertions, and AI behavior are reported separately. Behavior checks judge only the visible conversation.</p>
             </section>
 
             <section id="scenarios-section" class="tool-section" aria-labelledby="scenario-title">

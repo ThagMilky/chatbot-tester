@@ -52,6 +52,17 @@ const SIMULATOR_CATALOG_PATH = "/api/simulate-client-scenarios";
 const SIMULATOR_TURN_PATH = "/api/simulate-client-turn";
 const MESSENGER_API_PREFIX = "/api/messenger/";
 const MAX_BODY_BYTES = 256 * 1024;
+const PUBLIC_ASSETS = new Set([
+  "/index.html",
+  "/style.css",
+  "/config.js",
+  "/conversation-parser.js",
+  "/replay-helpers.js",
+  "/regression-helpers.js",
+  "/history.js",
+  "/app.js",
+  "/messenger-library-ui.js",
+]);
 
 const MIME_TYPES = {
   ".css": "text/css",
@@ -116,6 +127,7 @@ function resolveRequestedFile(requestUrl, rootDir = ROOT_DIR) {
     return null;
   }
   if (pathname === "/") pathname = "/index.html";
+  if (!PUBLIC_ASSETS.has(pathname)) return null;
   const requestedPath = path.resolve(rootDir, "." + pathname);
   const rootWithSeparator = rootDir.endsWith(path.sep) ? rootDir : rootDir + path.sep;
   if (requestedPath !== rootDir && !requestedPath.startsWith(rootWithSeparator)) return null;
@@ -247,8 +259,8 @@ function createStaticHandler(options = {}) {
       sendText(response, 400, "Bad Request");
       return;
     }
-    fs.stat(filePath, (statError, stats) => {
-      if (statError || !stats.isFile()) {
+    fs.lstat(filePath, (statError, stats) => {
+      if (statError || !stats.isFile() || stats.isSymbolicLink()) {
         sendText(response, 404, "Not Found");
         return;
       }
