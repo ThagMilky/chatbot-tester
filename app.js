@@ -1317,6 +1317,9 @@
     saveCurrentConversationToHistory();
     record = historyStore.getById(record.id, getHistoryStorage()) || record;
     invalidateScenarioEvaluation();
+    state.scenario.current = 0;
+    state.scenario.total = 0;
+    state.scenario.result = null;
     state.selectedBot = bot;
     state.sessionId = record.sessionId;
     state.messages = record.messages.map(function (message) {
