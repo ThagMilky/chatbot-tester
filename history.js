@@ -55,10 +55,16 @@
     const text = typeof message.text === "string" ? message.text : "";
     if (!type || !text.trim()) return null;
 
-    return {
+    const normalized = {
       type: type,
       text: text,
     };
+    const timestamp = nonEmptyString(message.timestamp, "");
+    if (timestamp && !Number.isNaN(Date.parse(timestamp))) {
+      normalized.timestamp = timestamp;
+    }
+
+    return normalized;
   }
 
   function normalizeRecord(record) {

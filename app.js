@@ -282,6 +282,7 @@
     historyViewerTitle: document.getElementById("history-viewer-title"),
     closeHistoryViewer: document.getElementById("close-history-viewer"),
     copyHistoryViewer: document.getElementById("copy-history-viewer"),
+    continueHistoryViewer: document.getElementById("continue-history-viewer"),
     historyTranscript: document.getElementById("history-transcript"),
     globalControls: document.getElementById("global-controls"),
     themeToggle: document.getElementById("theme-toggle"),
@@ -472,6 +473,7 @@
     messages: [],
     turns: [],
     historyViewerId: null,
+    historyTurnCountOffset: 0,
     selectedTurnId: null,
     nextTurnNumber: 1,
     isSending: false,
@@ -594,6 +596,7 @@
       return {
         type: message.type,
         text: String(message.text),
+        timestamp: message.timestamp,
       };
     });
 
@@ -605,7 +608,7 @@
       channelMode: state.channelMode,
       createdAt: existing ? existing.createdAt : now,
       updatedAt: now,
-      turnCount: state.turns.length,
+      turnCount: state.historyTurnCountOffset + state.turns.length,
       messages: mergeHistoryMessages(existing && existing.messages, messages),
     }, storage);
   }
@@ -898,6 +901,9 @@
     elements.botSelect.disabled = state.isSending || isReplayLocked() || simulatorLocked || !state.bots.length;
     elements.newConversation.disabled = state.isSending || isReplayLocked() || simulatorLocked;
     elements.clearChat.disabled = state.isSending || isReplayLocked() || simulatorLocked;
+    if (elements.continueHistoryViewer) {
+      elements.continueHistoryViewer.disabled = !state.historyViewerId || state.isSending || isReplayLocked() || simulatorLocked;
+    }
     if (elements.channelMode) elements.channelMode.disabled = state.isSending || isReplayLocked() || simulatorLocked;
     if (elements.edgeTestMode) elements.edgeTestMode.disabled = state.isSending || isReplayLocked() || simulatorLocked;
     elements.sendButton.classList.toggle("loading", state.isSending);
@@ -1194,7 +1200,8 @@
 
   function formatConversationTranscript() {
     return state.messages.map(function (message) {
-      return getConversationRole(message) + ":\n" + String(message.text);
+      const time = formatMessageTime(message.timestamp);
+      return (time ? "[" + time + "] " : "") + getConversationRole(message) + ":\n" + String(message.text);
     }).join("\n\n");
   }
 
@@ -1223,6 +1230,17 @@
     });
   }
 
+  function formatMessageTime(timestamp) {
+    const date = new Date(timestamp);
+    if (!timestamp || Number.isNaN(date.getTime())) return "";
+
+    return date.toLocaleTimeString("vi-VN", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    });
+  }
+
   function getHistoryPreview(record) {
     const firstClientMessage = record.messages.find(function (message) {
       return ["user", "staff", "ai-client"].includes(message.type);
@@ -1242,7 +1260,8 @@
     ];
 
     record.messages.forEach(function (message) {
-      lines.push(getConversationRole(message) + ":", String(message.text), "");
+      const time = formatMessageTime(message.timestamp);
+      lines.push((time ? "[" + time + "] " : "") + getConversationRole(message) + ":", String(message.text), "");
     });
 
     return lines.join("\n").trim();
@@ -1252,6 +1271,7 @@
     state.historyViewerId = null;
     if (elements.historyViewer) elements.historyViewer.hidden = true;
     if (elements.historyTranscript) elements.historyTranscript.textContent = "";
+    if (elements.continueHistoryViewer) elements.continueHistoryViewer.disabled = true;
   }
 
   function openHistoryRecord(historyId) {
@@ -1269,6 +1289,64 @@
     elements.historyViewerTitle.textContent = record.botName || "Conversation";
     elements.historyTranscript.textContent = formatHistoryTranscript(record);
     elements.copyHistoryViewer.disabled = false;
+    elements.continueHistoryViewer.disabled = state.isSending || isReplayLocked() || isSimulatorLocked();
+  }
+
+  function continueHistoryRecord() {
+    if (!historyStore || !state.historyViewerId) return;
+    if (state.isSending || isReplayLocked() || isSimulatorLocked()) {
+      showToast("Hãy đợi lượt chat hiện tại kết thúc rồi thử lại.");
+      return;
+    }
+
+    let record = historyStore.getById(state.historyViewerId, getHistoryStorage());
+    if (!record) {
+      showToast("History entry không còn tồn tại.");
+      renderHistoryList();
+      return;
+    }
+
+    const bot = state.bots.find(function (candidate) {
+      return candidate.id === record.botId || (!record.botId && candidate.name === record.botName);
+    });
+    if (!bot) {
+      showToast("Bot của conversation này không còn được bật trong config.js.");
+      return;
+    }
+
+    saveCurrentConversationToHistory();
+    record = historyStore.getById(record.id, getHistoryStorage()) || record;
+    invalidateScenarioEvaluation();
+    state.selectedBot = bot;
+    state.sessionId = record.sessionId;
+    state.messages = record.messages.map(function (message) {
+      return {
+        type: message.type,
+        text: message.text,
+        timestamp: message.timestamp || null,
+        options: [],
+        turnId: null,
+      };
+    });
+    state.turns = [];
+    state.historyTurnCountOffset = record.turnCount;
+    state.selectedTurnId = null;
+    state.nextTurnNumber = 1;
+    state.channelMode = record.channelMode === "messenger" ? "messenger" : "website";
+    state.senderMode = "client";
+    elements.botSelect.value = bot.id;
+    clearSuggestedOptions();
+    renderTurnLog();
+    updateSessionDisplay();
+    updateChannelDisplay();
+    renderMessages();
+    updateBotDisplay();
+    updateLoadingControls();
+    updateScenarioControls();
+    resetDebug();
+    setActiveWorkspace("tab-chat");
+    elements.messageInput.focus();
+    showToast("Đã khôi phục conversation. Tin nhắn mới sẽ dùng session ID đã lưu.");
   }
 
   function renderHistoryList() {
@@ -1443,6 +1521,14 @@
       bubble.textContent = message.text;
 
       row.append(meta, bubble);
+      const time = formatMessageTime(message.timestamp);
+      if (time) {
+        const timeLabel = document.createElement("time");
+        timeLabel.className = "message-time";
+        timeLabel.dateTime = message.timestamp;
+        timeLabel.textContent = time;
+        row.appendChild(timeLabel);
+      }
 
       if (["user", "staff"].includes(message.type) && message.turnId) {
         const actions = document.createElement("div");
@@ -1520,6 +1606,7 @@
     state.messages.push({
       type: type,
       text: String(text),
+      timestamp: new Date().toISOString(),
       options: Array.isArray(options) ? options : [],
       turnId: turnId || null,
     });
@@ -3254,6 +3341,7 @@
     state.sessionId = createSessionId();
     state.messages = [];
     state.turns = [];
+    state.historyTurnCountOffset = 0;
     state.selectedTurnId = null;
     state.nextTurnNumber = 1;
     renderTurnLog();
@@ -3616,6 +3704,9 @@
   if (elements.copySimulatorChat) elements.copySimulatorChat.addEventListener("click", copyConversation);
   if (elements.clearHistory) elements.clearHistory.addEventListener("click", clearHistory);
   if (elements.closeHistoryViewer) elements.closeHistoryViewer.addEventListener("click", closeHistoryViewer);
+  if (elements.continueHistoryViewer) {
+    elements.continueHistoryViewer.addEventListener("click", continueHistoryRecord);
+  }
   if (elements.copyHistoryViewer) {
     elements.copyHistoryViewer.addEventListener("click", function () {
       if (!historyStore || !state.historyViewerId) return;
