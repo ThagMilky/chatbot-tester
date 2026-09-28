@@ -901,13 +901,13 @@
       elements.sendButton.disabled = lockInput || !getStaffApiUrl(state.selectedBot);
     }
     elements.messageInput.disabled = lockInput;
-    elements.botSelect.disabled = state.isSending || isReplayLocked() || simulatorLocked || state.libraryJourneyRunning || !state.bots.length;
-    elements.newConversation.disabled = state.isSending || isReplayLocked() || simulatorLocked || state.libraryJourneyRunning;
-    elements.clearChat.disabled = state.isSending || isReplayLocked() || simulatorLocked || state.libraryJourneyRunning;
+    elements.botSelect.disabled = state.isSending || state.scenario.running || isReplayLocked() || simulatorLocked || state.libraryJourneyRunning || !state.bots.length;
+    elements.newConversation.disabled = state.isSending || state.scenario.running || isReplayLocked() || simulatorLocked || state.libraryJourneyRunning;
+    elements.clearChat.disabled = state.isSending || state.scenario.running || isReplayLocked() || simulatorLocked || state.libraryJourneyRunning;
     if (elements.continueHistoryViewer) {
-      elements.continueHistoryViewer.disabled = !state.historyViewerId || state.isSending || isReplayLocked() || simulatorLocked;
+      elements.continueHistoryViewer.disabled = !state.historyViewerId || state.isSending || state.scenario.running || isReplayLocked() || simulatorLocked;
     }
-    if (elements.channelMode) elements.channelMode.disabled = state.isSending || isReplayLocked() || simulatorLocked || state.libraryJourneyRunning;
+    if (elements.channelMode) elements.channelMode.disabled = state.isSending || state.scenario.running || isReplayLocked() || simulatorLocked || state.libraryJourneyRunning;
     if (elements.edgeTestMode) elements.edgeTestMode.disabled = state.isSending || isReplayLocked() || simulatorLocked || state.libraryJourneyRunning;
     elements.sendButton.classList.toggle("loading", state.isSending);
     elements.sendLabel.textContent = state.isSending
@@ -1292,12 +1292,12 @@
     elements.historyViewerTitle.textContent = record.botName || "Conversation";
     elements.historyTranscript.textContent = formatHistoryTranscript(record);
     elements.copyHistoryViewer.disabled = false;
-    elements.continueHistoryViewer.disabled = state.isSending || isReplayLocked() || isSimulatorLocked();
+    elements.continueHistoryViewer.disabled = state.isSending || state.scenario.running || isReplayLocked() || isSimulatorLocked();
   }
 
   function continueHistoryRecord() {
     if (!historyStore || !state.historyViewerId) return;
-    if (state.isSending || isReplayLocked() || isSimulatorLocked()) {
+    if (state.isSending || state.scenario.running || isReplayLocked() || isSimulatorLocked()) {
       showToast("Hãy đợi lượt chat hiện tại kết thúc rồi thử lại.");
       return;
     }
@@ -3030,11 +3030,19 @@
     return getBehaviorKeys().filter(function (key) { return source[key] === true; });
   }
 
-  function invalidateScenarioEvaluation() {
+  function invalidateScenarioEvaluation(options) {
+    const preserveRunMetadata = Boolean(options && options.preserveRunMetadata);
     state.scenario.runToken = {};
     state.scenario.evaluationInput = null;
     state.scenario.behaviorEvaluation = null;
     state.scenario.evaluationRequestToken = null;
+    if (!preserveRunMetadata) {
+      state.scenario.running = false;
+      state.scenario.current = 0;
+      state.scenario.total = 0;
+      state.scenario.result = null;
+      state.scenario.execution = null;
+    }
   }
 
   function formatBehaviorKey(key) {
@@ -3411,9 +3419,9 @@
     };
   }
 
-  function resetConversationData() {
+  function resetConversationData(options) {
     saveCurrentConversationToHistory();
-    invalidateScenarioEvaluation();
+    invalidateScenarioEvaluation(options);
     state.sessionId = createSessionId();
     state.messages = [];
     state.turns = [];
@@ -3452,7 +3460,7 @@
     state.scenario.total = scenario.messages.length;
     state.scenario.result = null;
     state.scenario.execution = null;
-    resetConversationData();
+    resetConversationData({ preserveRunMetadata: true });
     const runToken = {};
     state.scenario.runToken = runToken;
     updateBotDisplay();
@@ -3614,7 +3622,7 @@
   }
 
   function clearChat() {
-    if (isReplayLocked() || isSimulatorLocked() || state.libraryJourneyRunning) return;
+    if (state.scenario.running || isReplayLocked() || isSimulatorLocked() || state.libraryJourneyRunning) return;
     saveCurrentConversationToHistory();
     invalidateScenarioEvaluation();
     state.messages = [];
@@ -3637,7 +3645,7 @@
   }
 
   elements.botSelect.addEventListener("change", function (event) {
-    if (state.libraryJourneyRunning) {
+    if (state.scenario.running || state.libraryJourneyRunning) {
       elements.botSelect.value = state.selectedBot && state.selectedBot.id ? state.selectedBot.id : "";
       return;
     }
@@ -3658,7 +3666,7 @@
   });
   if (elements.channelMode) {
     elements.channelMode.addEventListener("change", function (event) {
-      if (state.libraryJourneyRunning) {
+      if (state.scenario.running || state.libraryJourneyRunning) {
         elements.channelMode.value = state.channelMode;
         return;
       }
@@ -3700,6 +3708,10 @@
   }
   if (elements.scenarioSelect) {
     elements.scenarioSelect.addEventListener("change", function (event) {
+      if (state.scenario.running) {
+        elements.scenarioSelect.value = state.scenario.scenarioId || "";
+        return;
+      }
       invalidateScenarioEvaluation();
       state.scenario.scenarioId = event.target.value || null;
       state.scenario.result = null;
