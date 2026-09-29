@@ -3113,13 +3113,16 @@
       : "error";
     elements.aiBehaviorResult.className = "ai-behavior-result status-" + status;
     const heading = document.createElement("strong");
+    heading.className = "i18n-ui";
     heading.textContent = "AI Behavior · " + (
       status === "completed" ? (current.overallPassed ? "PASS" : "FAIL") : status.toUpperCase()
     );
     elements.aiBehaviorResult.appendChild(heading);
 
     const summary = document.createElement("span");
-    summary.textContent = current.summary || (
+    const generatedSummary = current.summary || "";
+    if (!generatedSummary) summary.className = "i18n-ui";
+    summary.textContent = generatedSummary || (
       status === "pending" ? "Evaluating completed scenario turns..." :
           status === "skipped" ? "No behavior expectations are enabled." :
             status === "not-requested" ? "Run a scenario to request behavior evaluation." :
@@ -3171,6 +3174,7 @@
 
     elements.scenarioResult.className = "scenario-result " + (report.executionStatus === "PASS" ? "passed" : "failed");
     const heading = document.createElement("strong");
+    heading.className = "i18n-ui";
     heading.textContent = "Execution " + report.executionStatus + " · Assertions " + report.assertionStatus;
     elements.scenarioResult.appendChild(heading);
 
@@ -3199,12 +3203,13 @@
     }
     if (report.behaviorExpectations && Object.keys(report.behaviorExpectations).length) {
       const note = document.createElement("p");
-      note.className = "scenario-behavior-note";
+      note.className = "scenario-behavior-note i18n-ui";
       note.textContent = "AI behavior checks are shown separately and never change deterministic assertions.";
       elements.scenarioResult.appendChild(note);
     }
     if (Array.isArray(report.observableExpectations) && report.observableExpectations.length) {
       const expectationHeading = document.createElement("strong");
+      expectationHeading.className = "i18n-ui";
       expectationHeading.textContent = "Observable expectations";
       elements.scenarioResult.appendChild(expectationHeading);
       const expectationList = document.createElement("ul");

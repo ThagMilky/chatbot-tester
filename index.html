@@ -51,6 +51,11 @@
             </div>
             <div class="topbar-actions">
               <span class="local-badge">localhost</span>
+              <div class="language-toggle" role="group" aria-label="Language">
+                <button class="language-option" type="button" data-language="vi" aria-label="Vietnamese" aria-pressed="true">VI</button>
+                <span aria-hidden="true">|</span>
+                <button class="language-option" type="button" data-language="en" aria-label="English" aria-pressed="false">EN</button>
+              </div>
               <button id="theme-toggle" class="icon-button theme-button" type="button" aria-label="Switch to dark theme" aria-pressed="false">
                 <span class="theme-icon-sun" aria-hidden="true">☼</span>
                 <span class="theme-icon-moon" aria-hidden="true">◐</span>
@@ -625,6 +630,7 @@
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
+    <script src="i18n.js"></script>
     <script src="config.js"></script>
     <script src="conversation-parser.js"></script>
     <script src="replay-helpers.js"></script>

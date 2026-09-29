@@ -1812,6 +1812,34 @@ summary:focus-visible {
   gap: 8px;
 }
 
+.language-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  color: var(--muted);
+  background: var(--panel);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.language-option {
+  min-width: 28px;
+  padding: 4px 5px;
+  border: 0;
+  border-radius: 6px;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+}
+
+.language-option.active {
+  color: var(--accent-dark);
+  background: var(--accent-soft);
+}
+
 .icon-button {
   display: inline-grid;
   width: 38px;
